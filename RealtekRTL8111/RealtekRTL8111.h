@@ -173,15 +173,15 @@ private:
     void rxInterrupt();
     bool setupDMADescriptors();
     void freeDMADescriptors();
-    void txClear();
+    void txClearDescriptors(bool withReset);
     void checkLinkStatus();
     void updateStatitics();
     
     /* Hardware initialization methods. */
-    bool initChip(struct rtl8168_private *tp);
-    bool enableChip();
-    void disableChip();
-    void startChip();
+    bool initRTL8111();
+    void enableRTL8111();
+    void disableRTL8111();
+    void startRTL8111();
     void setOffset79(UInt8 setting);
     
 private:

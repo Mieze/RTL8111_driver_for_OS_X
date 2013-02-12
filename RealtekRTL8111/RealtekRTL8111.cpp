@@ -21,13 +21,12 @@
 
 #include "RealtekRTL8111.h"
 
-static inline void fillDescriptorAddr(volatile void *baseAddr, IOPhysicalAddress64 txPhyAddr, IOPhysicalAddress64 rxPhyAddr)
-{
-    WriteReg32(TxDescStartAddrLow, (txPhyAddr & 0x00000000ffffffff));
-    WriteReg32(TxDescStartAddrHigh, (txPhyAddr >> 32));
-    WriteReg32(RxDescAddrLow, (rxPhyAddr & 0x00000000ffffffff));
-    WriteReg32(RxDescAddrHigh, (rxPhyAddr >> 32));
-}
+#pragma mark --- function prototypes ---
+
+static inline void fillDescriptorAddr(volatile void *baseAddr, IOPhysicalAddress64 txPhyAddr, IOPhysicalAddress64 rxPhyAddr);
+static inline u32 ether_crc(int length, unsigned char *data);
+
+#pragma mark --- public methods ---
 
 OSDefineMetaClassAndStructors(RTL8111, super)
 
@@ -155,7 +154,7 @@ bool RTL8111::start(IOService *provider)
         goto error2;
     }
     
-    if (!initChip(&linuxData)) {
+    if (!initRTL8111()) {
         goto error2;
     }
     
@@ -314,7 +313,7 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
         selectedMedium = mediumTable[MEDIUM_INDEX_AUTO];
     }
     selectMedium(selectedMedium);
-    enableChip();
+    enableRTL8111();
     
     /* In case we are using an msi the interrupt hasn't been enabled by start(). */
     if (useMSI)
@@ -324,7 +323,6 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     deadlockWarn = 0;
     needsUpdate = false;
     txQueue->setCapacity(kTransmitQueueCapacity);
-    //txQueue->start();
     isEnabled = true;
 
     result = kIOReturnSuccess;
@@ -359,14 +357,14 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
     txQueue->flush();
     DebugLog("Queue stopped.\n");
     
-    disableChip();
+    disableRTL8111();
     DebugLog("Chip disabled.\n");
 
     setLinkStatus(kIONetworkLinkValid);
     linkUp = false;
     isEnabled = false;
     stalled = false;
-    txClear();
+    txClearDescriptors(true);
 
     if (pciDevice && pciDevice->isOpen())
         pciDevice->close(this);
@@ -662,23 +660,6 @@ IOReturn RTL8111::setMulticastMode(bool active)
     return kIOReturnSuccess;
 }
 
-static unsigned const ethernet_polynomial = 0x04c11db7U;
-
-static inline u32 ether_crc(int length, unsigned char *data)
-{
-    int crc = -1;
-
-    while(--length >= 0) {
-        unsigned char current_octet = *data++;
-        int bit;
-        for (bit = 0; bit < 8; bit++, current_octet >>= 1) {
-                crc = (crc << 1) ^
-                ((crc < 0) ^ (current_octet & 1) ? ethernet_polynomial : 0);
-        }
-    }
-    return crc;
-}
-
 IOReturn RTL8111::setMulticastList(IOEthernetAddress *addrs, UInt32 count)
 {
     UInt32 *filterAddr = (UInt32 *)&multicastFilter;
@@ -842,133 +823,7 @@ done:
     return result;
 }
 
-#pragma mark --- Private methods ---
-
-bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
-{
-    UInt16 cmdReg;
-    //UInt16 pmCap;
-    //UInt8 pmCapOffset;
-    bool result = false;
-    
-    cmdReg	= provider->configRead16(kIOPCIConfigCommand);
-    cmdReg  &= ~kIOPCICommandIOSpace;
-    cmdReg	|= (kIOPCICommandBusMaster | kIOPCICommandMemorySpace | kIOPCICommandMemWrInvalidate);
-	provider->configWrite16(kIOPCIConfigCommand, cmdReg);
-    provider->setBusMasterEnable(true);
-    
-    pciDeviceData.vendor = provider->configRead16(kIOPCIConfigVendorID);
-    pciDeviceData.device = provider->configRead16(kIOPCIConfigDeviceID);
-    pciDeviceData.subsystem_vendor = provider->configRead16(kIOPCIConfigSubSystemVendorID);
-    pciDeviceData.subsystem_device = provider->configRead16(kIOPCIConfigSubSystemID);
-
-    provider->enablePCIPowerManagement();
-    
-    baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
-    
-    if (!baseMap) {
-        IOLog("Ethernet [RealtekRTL8111]: region #2 not an MMIO resource, aborting\n");
-        goto done;
-    }
-
-    baseAddr = reinterpret_cast<volatile void *>(baseMap->getVirtualAddress());
-    linuxData.mmio_addr = baseAddr;
-    result = true;
-    
-done:
-    return result;
-}
-
-bool RTL8111::initChip(struct rtl8168_private *tp)
-{
-    UInt32 i;
-    UInt16 mac_addr[4];
-    bool result = false;
-    
-    if (!tp)
-        goto done;
-    
-    /* Identify chip attached to board */
-	rtl8168_get_mac_version(tp, baseAddr);
-    rtl8168_print_mac_version(tp);
-    
-    /* Assume original RTL-8168 in case of unkown chipset. */
-    tp->chipset = (tp->mcfg <= CFG_METHOD_24) ? tp->mcfg : CFG_METHOD_1;
-    
-    /* As of know the driver doesn't support RTL8168B/8111B. */
-    if ((tp->chipset == CFG_METHOD_1) || (tp->chipset == CFG_METHOD_2) || (tp->chipset == CFG_METHOD_3)) {
-        IOLog("[RTL8111] RTL8168B/8111B currently unsupported. Aborting!");
-        goto done;
-    }
-	tp->set_speed = rtl8168_set_speed_xmii;
-	tp->get_settings = rtl8168_gset_xmii;
-	tp->phy_reset_enable = rtl8168_xmii_reset_enable;
-	tp->phy_reset_pending = rtl8168_xmii_reset_pending;
-	tp->link_ok = rtl8168_xmii_link_ok;
-    
-    if ((tp->mcfg == CFG_METHOD_9) || (tp->mcfg == CFG_METHOD_10))
-		WriteReg8(DBG_reg, ReadReg8(DBG_reg) | BIT_1 | BIT_7);
-    
-	/* Get production from EEPROM */
-	rtl_eeprom_type(tp);
-	if (tp->eeprom_type != EEPROM_TYPE_NONE) {
-		/* Get MAC address from EEPROM */
-		if (tp->mcfg == CFG_METHOD_16 ||
-		    tp->mcfg == CFG_METHOD_17 ||
-		    tp->mcfg == CFG_METHOD_18 ||
-		    tp->mcfg == CFG_METHOD_19 ||
-		    tp->mcfg == CFG_METHOD_20 ||
-			tp->mcfg == CFG_METHOD_21 ||
-			tp->mcfg == CFG_METHOD_22 ||
-			tp->mcfg == CFG_METHOD_24) {
-			mac_addr[0] = rtl_eeprom_read_sc(tp, 1);
-			mac_addr[1] = rtl_eeprom_read_sc(tp, 2);
-			mac_addr[2] = rtl_eeprom_read_sc(tp, 3);
-		} else {
-			mac_addr[0] = rtl_eeprom_read_sc(tp, 7);
-			mac_addr[1] = rtl_eeprom_read_sc(tp, 8);
-			mac_addr[2] = rtl_eeprom_read_sc(tp, 9);
-		}
-		mac_addr[3] = 0;
-		WriteReg8(Cfg9346, Cfg9346_Unlock);
-		WriteReg32(MAC0, (mac_addr[1] << 16) | mac_addr[0]);
-		WriteReg32(MAC4, (mac_addr[3] << 16) | mac_addr[2]);
-		WriteReg8(Cfg9346, Cfg9346_Lock);
-	}
-	for (i = 0; i < MAC_ADDR_LEN; i++) {
-		currMacAddr.bytes[i] = ReadReg8(MAC0 + i);
-		origMacAddr.bytes[i] = currMacAddr.bytes[i]; /* keep the original MAC address */
-	}
-    IOLog("%s: at 0x%lx, %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
-          rtl_chip_info[tp->chipset].name, (unsigned long)baseAddr,
-          origMacAddr.bytes[0], origMacAddr.bytes[1],
-          origMacAddr.bytes[2], origMacAddr.bytes[3],
-          origMacAddr.bytes[4], origMacAddr.bytes[5]);
-    
-    tp->cp_cmd = ReadReg16(CPlusCmd);
-    tp->max_jumbo_frame_size = rtl_chip_info[tp->chipset].jumbo_frame_sz;
-    tp->intr_mask = LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK;
-    /*
-     tp->intr_mask =  SYSErr | LinkChg | TxErr | TxOK | TxDescUnavail | RxDescUnavail | RxErr | RxOK | PCSTimeout;
-     */
-    /* Get the RxConfig parameters. */
-    rxConfigReg = rtl_chip_info[tp->chipset].RCR_Cfg;
-    rxConfigMask = rtl_chip_info[tp->chipset].RxConfigMask;
-    
-	if (tp->mcfg == CFG_METHOD_11 || tp->mcfg==CFG_METHOD_12 ||
-	    tp->mcfg == CFG_METHOD_13 || tp->mcfg == CFG_METHOD_23)
-		rtl8168_driver_start(tp);
-    
-	rtl8168_phy_power_up(tp);
-	rtl8168_hw_phy_config(tp);
-    pciDevice->configWrite8(kIOPCIConfigLatencyTimer, 0x40);
-	rtl8168_set_speed(tp, autoneg, speed, duplex);
-    rtl8168_init_sequence(tp);
-    result = true;
-    
-done:
-    return result;
-}
+#pragma mark --- data structure initialization methods ---
 
 static IOMediumType mediumTypeArray[MEDIUM_INDEX_COUNT] = {
     kIOMediumEthernetAuto,
@@ -1111,6 +966,7 @@ bool RTL8111::setupDMADescriptors()
     UInt32 opts1;
     bool result = false;
     
+    /* Create transmitter descriptor array. */
     txBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMapInhibitCache), kTxDescSize, 0xFFFFFFFFFFFFFF00ULL);
             
     if (!txBufDesc) {
@@ -1142,6 +998,7 @@ bool RTL8111::setupDMADescriptors()
     
     DebugLog("txDescArray=0x%llx, pyhAddr=0x%llx\n", (UInt64)txDescArray, txPhyAddr);
 
+    /* Create receiver descriptor array. */
     rxBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMapInhibitCache), kRxDescSize, 0xFFFFFFFFFFFFFF00ULL);
     
     if (!rxBufDesc) {
@@ -1171,6 +1028,7 @@ bool RTL8111::setupDMADescriptors()
         IOLog("Ethernet [RealtekRTL8111]: Couldn't create rxMbufCursor.\n");
         goto error5;
     }
+    /* Alloc receive buffers. */
     for (i = 0; i < kNumRxDesc; i++) {
         m = allocatePacket(kRxBufferPktSize);
         
@@ -1190,7 +1048,7 @@ bool RTL8111::setupDMADescriptors()
         rxDescArray[i].opts2 = 0;
         rxDescArray[i].addr = OSSwapHostToLittleInt64(rxSegment.location);
     }
-    
+    /* Create statistics dump buffer. */
     statBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionIn | kIOMemoryPhysicallyContiguous | kIOMapInhibitCache), sizeof(RtlStatData), 0xFFFFFFFFFFFFFF00ULL);
     
     if (!statBufDesc) {
@@ -1280,13 +1138,13 @@ void RTL8111::freeDMADescriptors()
     }
 }
 
-void RTL8111::txClear()
+void RTL8111::txClearDescriptors(bool withReset)
 {
     mbuf_t m;
     UInt32 lastIndex = kTxLastDesc;
     UInt32 i;
     
-    DebugLog("txClear() ===>\n");
+    DebugLog("txClearDescriptors() ===>\n");
     
     for (i = 0; i < kNumTxDesc; i++) {
         txDescArray[i].opts1 = OSSwapHostToLittleInt32((i != lastIndex) ? 0 : RingEnd);
@@ -1297,11 +1155,17 @@ void RTL8111::txClear()
             txMbufArray[i] = NULL;
         }
     }
-    txDirtyDescIndex = txNextDescIndex;
+    if (withReset)
+        txDirtyDescIndex = txNextDescIndex = 0;
+    else
+        txDirtyDescIndex = txNextDescIndex;
+    
     txNumFreeDesc = kNumTxDesc;
     
-    DebugLog("txClear() <===\n");
+    DebugLog("txClearDescriptors() <===\n");
 }
+
+#pragma mark --- interrupt and timer action methods ---
 
 void RTL8111::txInterrupt()
 {
@@ -1446,85 +1310,6 @@ nextDesc:
         netif->flushInputQueue();
 }
 
-void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count)
-{
-	UInt16 status;
-    
-	WriteReg16(IntrMask, 0x0000);
-    status = ReadReg16(IntrStatus);
-    
-    /* hotplug/major error/no more work/shared irq */
-    if ((status == 0xFFFF) || !status)
-        goto done;
-    
-    /*
-     
-     if (unlikely(status & SYSErr)) {
-     rtl8168_pcierr_interrupt(dev);
-     break;
-     }
-     */
-    /* Rx interrupt */
-    if (status & (RxOK | RxDescUnavail | RxFIFOOver))
-        rxInterrupt();
-        
-    /* Tx interrupt */
-    if (status & (TxOK | TxErr))
-        txInterrupt();
-
-    if (status & LinkChg)
-        checkLinkStatus();
-
-    /* Check if a statistics dump has been completed. */
-    if (needsUpdate && !(ReadReg32(CounterAddrLow) & CounterDump))
-        updateStatitics();
-    
-done:
-    WriteReg16(IntrStatus, 0xffff);
-	WriteReg16(IntrMask, linuxData.intr_mask);
-}
-
-void RTL8111::timerAction(IOTimerEventSource *timer)
-{
-    UInt32 cmd;
-    
-    //DebugLog("timerAction() ===>\n");
-    
-    if (linkUp) {
-        /* Check for tx deadlock. */
-        if ((txReqDoneCount == txReqDoneLast) && (txNumFreeDesc < kNumTxDesc)) {
-            if (++deadlockWarn >= kTxDeadlockTreshhold) {
-                IOLog("Ethernet [RealtekRTL8111]: Tx deadlock detected.\n");
-                deadlockWarn = 0;
-                /*
-                 txQueue->stop();
-                 IOLockLock(txLock);
-                 rtl8168_nic_reset(&linuxData);
-                 rxInterrupt();
-                 txClear();
-                 linkUp = false;
-                 enableChip();
-                 IOLockUnlock(txLock);
-                 checkLinkStatus();
-                 */
-            }
-        } else {
-            /* Some chips are unable to dump the tally counter while the receiver is disabled. */
-            if (ReadReg8(ChipCmd) & CmdRxEnb) {
-                WriteReg32(CounterAddrHigh, (statPhyAddr >> 32));
-                cmd = (statPhyAddr & 0x00000000ffffffff);
-                WriteReg32(CounterAddrLow, cmd);
-                WriteReg32(CounterAddrLow, cmd | CounterDump);
-                needsUpdate = true;
-                deadlockWarn = 0;
-            }
-            timerSource->setTimeoutMS(kTimeoutMS);
-        }
-    }
-    
-    //DebugLog("timerAction() <===\n");
-}
-
 void RTL8111::updateStatitics()
 {
     UInt32 sgColl, mlColl;
@@ -1651,6 +1436,7 @@ void RTL8111::checkLinkStatus()
 			WriteReg32(ERIDR, 0x00000000);
 			WriteReg32(ERIAR, 0x8042f108);
 		}
+        /* Get link speed, duplex and flow-control mode. */
         if (currLinkState & _1000bpsF) {
             mediumSpeed = kSpeed1000MBit;
             speed = SPEED_1000;
@@ -1688,20 +1474,27 @@ void RTL8111::checkLinkStatus()
             flowName = offFlowName;
         
         linkUp = true;
+        setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, mediumTable[mediumIndex], mediumSpeed, NULL);
+        
+        /* Restart txQueue, statistics updates and watchdog. */
         txQueue->start();
         timerSource->setTimeoutMS(kTimeoutMS);
-        setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, mediumTable[mediumIndex], mediumSpeed, NULL);
         IOLog("Ethernet [RealtekRTL8111]: Link up on en%u, %s, %s, %s\n", unitNumber, speedName, duplexName, flowName);
 	} else {
+        /* Stop watchdog and statistics updates. */
         timerSource->cancelTimeout();
-        linkUp = false;
-        needsUpdate = false;
         deadlockWarn = 0;
+        needsUpdate = false;
+        
+        /* Update link status. */
+        linkUp = false;
         setLinkStatus(kIONetworkLinkValid);
+        
+        /* Stop txQueue and cleanup descriptor ring. */
         txQueue->stop();
         txQueue->flush();
         IOLockLock(txLock);
-        txClear();
+        txClearDescriptors(false);
         IOLockUnlock(txLock);
         IOLog("Ethernet [RealtekRTL8111]: Link down on en%u\n", unitNumber);
         
@@ -1712,20 +1505,220 @@ void RTL8111::checkLinkStatus()
 	}
 }
 
-bool RTL8111::enableChip()
+void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count)
 {
-    struct rtl8168_private *tp = &linuxData;
+	UInt16 status;
+    
+	WriteReg16(IntrMask, 0x0000);
+    status = ReadReg16(IntrStatus);
+    
+    /* hotplug/major error/no more work/shared irq */
+    if ((status == 0xFFFF) || !status)
+        goto done;
+    
+    /* Rx interrupt */
+    if (status & (RxOK | RxDescUnavail | RxFIFOOver))
+        rxInterrupt();
+    
+    /* Tx interrupt */
+    if (status & (TxOK | TxErr))
+        txInterrupt();
+    
+    if (status & LinkChg)
+        checkLinkStatus();
+    
+    /* Check if a statistics dump has been completed. */
+    if (needsUpdate && !(ReadReg32(CounterAddrLow) & CounterDump))
+        updateStatitics();
+    
+done:
+    WriteReg16(IntrStatus, 0xffff);
+	WriteReg16(IntrMask, linuxData.intr_mask);
+}
+
+void RTL8111::timerAction(IOTimerEventSource *timer)
+{
+    UInt32 cmd;
+    //DebugLog("timerAction() ===>\n");
+    
+    if (linkUp) {
+        /* Check for tx deadlock. */
+        if ((txReqDoneCount == txReqDoneLast) && (txNumFreeDesc < kNumTxDesc)) {
+            if (++deadlockWarn >= kTxDeadlockTreshhold) {
+                IOLog("Ethernet [RealtekRTL8111]: Tx deadlock detected.\n");
+                /* Stop and cleanup txQueue. Also set the link status to down. */
+                txQueue->stop();
+                txQueue->flush();
+                linkUp = false;
+                setLinkStatus(kIONetworkLinkValid);
+                
+                /* Lock the transmitter. */
+                IOLockLock(txLock);
+                
+                /* Reset NIC and cleanup both descpritor rings. */
+                rtl8168_nic_reset(&linuxData);
+                txClearDescriptors(true);
+                rxInterrupt();
+                rxNextDescIndex = 0;
+                deadlockWarn = 0;
+
+                /* Reinitialize NIC and release txLock. */
+                enableRTL8111();
+                IOLockUnlock(txLock);
+            }
+        } else {
+            /* Some chips are unable to dump the tally counter while the receiver is disabled. */
+            if (ReadReg8(ChipCmd) & CmdRxEnb) {
+                WriteReg32(CounterAddrHigh, (statPhyAddr >> 32));
+                cmd = (statPhyAddr & 0x00000000ffffffff);
+                WriteReg32(CounterAddrLow, cmd);
+                WriteReg32(CounterAddrLow, cmd | CounterDump);
+                needsUpdate = true;
+            }
+            timerSource->setTimeoutMS(kTimeoutMS);
+            deadlockWarn = 0;
+        }
+    }
+    
+    //DebugLog("timerAction() <===\n");
+}
+
+#pragma mark --- hardware initialization methods ---
+
+bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
+{
+    UInt16 cmdReg;
+    //UInt16 pmCap;
+    //UInt8 pmCapOffset;
     bool result = false;
     
-    rtl8168_powerup_pll(tp);
-	startChip();
-	rtl8168_dsm(tp, DSM_IF_UP);
+    cmdReg	= provider->configRead16(kIOPCIConfigCommand);
+    cmdReg  &= ~kIOPCICommandIOSpace;
+    cmdReg	|= (kIOPCICommandBusMaster | kIOPCICommandMemorySpace | kIOPCICommandMemWrInvalidate);
+	provider->configWrite16(kIOPCIConfigCommand, cmdReg);
+    provider->setBusMasterEnable(true);
+    
+    pciDeviceData.vendor = provider->configRead16(kIOPCIConfigVendorID);
+    pciDeviceData.device = provider->configRead16(kIOPCIConfigDeviceID);
+    pciDeviceData.subsystem_vendor = provider->configRead16(kIOPCIConfigSubSystemVendorID);
+    pciDeviceData.subsystem_device = provider->configRead16(kIOPCIConfigSubSystemID);
+    
+    provider->enablePCIPowerManagement();
+    
+    baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
+    
+    if (!baseMap) {
+        IOLog("Ethernet [RealtekRTL8111]: region #2 not an MMIO resource, aborting\n");
+        goto done;
+    }
+    
+    baseAddr = reinterpret_cast<volatile void *>(baseMap->getVirtualAddress());
+    linuxData.mmio_addr = baseAddr;
+    result = true;
     
 done:
     return result;
 }
 
-void RTL8111::disableChip()
+bool RTL8111::initRTL8111()
+{
+    struct rtl8168_private *tp = &linuxData;
+    UInt32 i;
+    UInt16 mac_addr[4];
+    bool result = false;
+        
+    /* Identify chip attached to board */
+	rtl8168_get_mac_version(tp, baseAddr);
+    rtl8168_print_mac_version(tp);
+    
+    /* Assume original RTL-8168 in case of unkown chipset. */
+    tp->chipset = (tp->mcfg <= CFG_METHOD_24) ? tp->mcfg : CFG_METHOD_1;
+    
+    /* As of now the driver doesn't support RTL8168B/8111B. */
+    if ((tp->chipset == CFG_METHOD_1) || (tp->chipset == CFG_METHOD_2) || (tp->chipset == CFG_METHOD_3)) {
+        IOLog("[RTL8111] RTL8168B/8111B currently unsupported. Aborting!");
+        goto done;
+    }
+	tp->set_speed = rtl8168_set_speed_xmii;
+	tp->get_settings = rtl8168_gset_xmii;
+	tp->phy_reset_enable = rtl8168_xmii_reset_enable;
+	tp->phy_reset_pending = rtl8168_xmii_reset_pending;
+	tp->link_ok = rtl8168_xmii_link_ok;
+    
+    if ((tp->mcfg == CFG_METHOD_9) || (tp->mcfg == CFG_METHOD_10))
+		WriteReg8(DBG_reg, ReadReg8(DBG_reg) | BIT_1 | BIT_7);
+    
+	/* Get production from EEPROM */
+	rtl_eeprom_type(tp);
+	if (tp->eeprom_type != EEPROM_TYPE_NONE) {
+		/* Get MAC address from EEPROM */
+		if (tp->mcfg == CFG_METHOD_16 ||
+		    tp->mcfg == CFG_METHOD_17 ||
+		    tp->mcfg == CFG_METHOD_18 ||
+		    tp->mcfg == CFG_METHOD_19 ||
+		    tp->mcfg == CFG_METHOD_20 ||
+			tp->mcfg == CFG_METHOD_21 ||
+			tp->mcfg == CFG_METHOD_22 ||
+			tp->mcfg == CFG_METHOD_24) {
+			mac_addr[0] = rtl_eeprom_read_sc(tp, 1);
+			mac_addr[1] = rtl_eeprom_read_sc(tp, 2);
+			mac_addr[2] = rtl_eeprom_read_sc(tp, 3);
+		} else {
+			mac_addr[0] = rtl_eeprom_read_sc(tp, 7);
+			mac_addr[1] = rtl_eeprom_read_sc(tp, 8);
+			mac_addr[2] = rtl_eeprom_read_sc(tp, 9);
+		}
+		mac_addr[3] = 0;
+		WriteReg8(Cfg9346, Cfg9346_Unlock);
+		WriteReg32(MAC0, (mac_addr[1] << 16) | mac_addr[0]);
+		WriteReg32(MAC4, (mac_addr[3] << 16) | mac_addr[2]);
+		WriteReg8(Cfg9346, Cfg9346_Lock);
+	}
+	for (i = 0; i < MAC_ADDR_LEN; i++) {
+		currMacAddr.bytes[i] = ReadReg8(MAC0 + i);
+		origMacAddr.bytes[i] = currMacAddr.bytes[i]; /* keep the original MAC address */
+	}
+    IOLog("%s: at 0x%lx, %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
+          rtl_chip_info[tp->chipset].name, (unsigned long)baseAddr,
+          origMacAddr.bytes[0], origMacAddr.bytes[1],
+          origMacAddr.bytes[2], origMacAddr.bytes[3],
+          origMacAddr.bytes[4], origMacAddr.bytes[5]);
+    
+    tp->cp_cmd = ReadReg16(CPlusCmd);
+    tp->max_jumbo_frame_size = rtl_chip_info[tp->chipset].jumbo_frame_sz;
+    tp->intr_mask = LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK;
+    /*
+     tp->intr_mask =  SYSErr | LinkChg | TxErr | TxOK | TxDescUnavail | RxDescUnavail | RxErr | RxOK | PCSTimeout;
+     */
+    /* Get the RxConfig parameters. */
+    rxConfigReg = rtl_chip_info[tp->chipset].RCR_Cfg;
+    rxConfigMask = rtl_chip_info[tp->chipset].RxConfigMask;
+    
+	if (tp->mcfg == CFG_METHOD_11 || tp->mcfg==CFG_METHOD_12 ||
+	    tp->mcfg == CFG_METHOD_13 || tp->mcfg == CFG_METHOD_23)
+		rtl8168_driver_start(tp);
+    
+	rtl8168_phy_power_up(tp);
+	rtl8168_hw_phy_config(tp);
+    pciDevice->configWrite8(kIOPCIConfigLatencyTimer, 0x40);
+	rtl8168_set_speed(tp, autoneg, speed, duplex);
+    rtl8168_init_sequence(tp);
+    result = true;
+    
+done:
+    return result;
+}
+
+void RTL8111::enableRTL8111()
+{
+    struct rtl8168_private *tp = &linuxData;
+    
+    rtl8168_powerup_pll(tp);
+	startRTL8111();
+	rtl8168_dsm(tp, DSM_IF_UP);
+}
+
+void RTL8111::disableRTL8111()
 {
     struct rtl8168_private *tp = &linuxData;
     
@@ -1739,7 +1732,7 @@ void RTL8111::disableChip()
     IOLockUnlock(txLock);
 }
 
-void RTL8111::startChip()
+void RTL8111::startRTL8111()
 {
     struct rtl8168_private *tp = &linuxData;
     UInt8 device_control, options1, options2;
@@ -2770,3 +2763,31 @@ void RTL8111::setOffset79(UInt8 setting)
     
     DebugLog("setOffset79() <===\n");
 }
+
+#pragma mark --- miscellaneous functions ---
+
+static inline void fillDescriptorAddr(volatile void *baseAddr, IOPhysicalAddress64 txPhyAddr, IOPhysicalAddress64 rxPhyAddr)
+{
+    WriteReg32(TxDescStartAddrLow, (txPhyAddr & 0x00000000ffffffff));
+    WriteReg32(TxDescStartAddrHigh, (txPhyAddr >> 32));
+    WriteReg32(RxDescAddrLow, (rxPhyAddr & 0x00000000ffffffff));
+    WriteReg32(RxDescAddrHigh, (rxPhyAddr >> 32));
+}
+
+static unsigned const ethernet_polynomial = 0x04c11db7U;
+
+static inline u32 ether_crc(int length, unsigned char *data)
+{
+    int crc = -1;
+    
+    while(--length >= 0) {
+        unsigned char current_octet = *data++;
+        int bit;
+        for (bit = 0; bit < 8; bit++, current_octet >>= 1) {
+            crc = (crc << 1) ^
+            ((crc < 0) ^ (current_octet & 1) ? ethernet_polynomial : 0);
+        }
+    }
+    return crc;
+}
+
