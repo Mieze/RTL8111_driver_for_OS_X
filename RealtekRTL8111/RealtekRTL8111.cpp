@@ -2320,12 +2320,10 @@ void RTL8111::startChip()
             WriteReg8(MTPS, 0x27);
             
             /* tx checksum offload disable */
-            //dev->features &= ~NETIF_F_IP_CSUM;
         } else {
             WriteReg8(MTPS, 0x0C);
             
             /* tx checksum offload enable */
-            //dev->features |= NETIF_F_IP_CSUM;
         }
         
         //rtl8168_set_rxbufsize(tp, dev);
@@ -2381,12 +2379,10 @@ void RTL8111::startChip()
             WriteReg8(MTPS, 0x27);
             
             /* tx checksum offload disable */
-            //dev->features &= ~NETIF_F_IP_CSUM;
         } else {
             WriteReg8(MTPS, 0x0C);
             
             /* tx checksum offload enable */
-            //dev->features |= NETIF_F_IP_CSUM;
         }
         
         //rtl8168_set_rxbufsize(tp, dev);
@@ -2466,12 +2462,10 @@ void RTL8111::startChip()
             WriteReg8(MTPS, 0x27);
             
             /* tx checksum offload disable */
-            //dev->features &= ~NETIF_F_IP_CSUM;
         } else {
             WriteReg8(MTPS, 0x0C);
             
             /* tx checksum offload enable */
-            //dev->features |= NETIF_F_IP_CSUM;
         }
         
         //rtl8168_set_rxbufsize(tp, dev);
@@ -2537,12 +2531,10 @@ void RTL8111::startChip()
             WriteReg8(MTPS, 0x27);
             
             /* tx checksum offload disable */
-            //dev->features &= ~NETIF_F_IP_CSUM;
         } else {
             WriteReg8(MTPS, 0x0C);
             
             /* tx checksum offload enable */
-            //dev->features |= NETIF_F_IP_CSUM;
         }
         
         //rtl8168_set_rxbufsize(tp, dev);
