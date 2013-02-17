@@ -1,3 +1,23 @@
+/* RealtekRTL8111Linux.c -- Code shared with the linux driver.
+ *
+ * Copyright (c) 2013 Laura Müller <laura-mueller@uni-duesseldorf.de>
+ * All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * Driver for Realtek RTL8111x PCIe ethernet controllers.
+ *
+ * This driver is based on Realtek's r8168 Linux driver.
+ */
+
 /*
 ################################################################################
 #
@@ -17988,9 +18008,3 @@ void rtl_stand_by(void __iomem *ioaddr)
     RTL_W8(Cfg9346, x);
 }
     
-#pragma mark --- RTL8111 Driver methods ---
-
-
-
-
-

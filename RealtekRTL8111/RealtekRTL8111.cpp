@@ -1546,45 +1546,54 @@ void RTL8111::timerAction(IOTimerEventSource *timer)
     UInt32 cmd;
     //DebugLog("timerAction() ===>\n");
     
-    if (linkUp) {
-        /* Check for tx deadlock. */
-        if ((txReqDoneCount == txReqDoneLast) && (txNumFreeDesc < kNumTxDesc)) {
-            if (++deadlockWarn >= kTxDeadlockTreshhold) {
-                IOLog("Ethernet [RealtekRTL8111]: Tx deadlock detected.\n");
-                /* Stop and cleanup txQueue. Also set the link status to down. */
-                txQueue->stop();
-                txQueue->flush();
-                linkUp = false;
-                setLinkStatus(kIONetworkLinkValid);
-                
-                /* Lock the transmitter. */
-                IOLockLock(txLock);
-                
-                /* Reset NIC and cleanup both descpritor rings. */
-                rtl8168_nic_reset(&linuxData);
-                txClearDescriptors(true);
-                rxInterrupt();
-                rxNextDescIndex = 0;
-                deadlockWarn = 0;
-
-                /* Reinitialize NIC and release txLock. */
-                enableRTL8111();
-                IOLockUnlock(txLock);
-            }
-        } else {
-            /* Some chips are unable to dump the tally counter while the receiver is disabled. */
-            if (ReadReg8(ChipCmd) & CmdRxEnb) {
-                WriteReg32(CounterAddrHigh, (statPhyAddr >> 32));
-                cmd = (statPhyAddr & 0x00000000ffffffff);
-                WriteReg32(CounterAddrLow, cmd);
-                WriteReg32(CounterAddrLow, cmd | CounterDump);
-                needsUpdate = true;
-            }
-            timerSource->setTimeoutMS(kTimeoutMS);
-            deadlockWarn = 0;
-        }
+    if (!linkUp) {
+        DebugLog("Ethernet [RealtekRTL8111]: Timer fired while link down.\n");
+        goto done;
     }
-    
+    /* Check for tx deadlock. */
+    //DebugLog("Ethernet [RealtekRTL8111]: Check for Tx deadlock: txReqDoneCount=%llu, txNumFreeDesc=%u\n", txReqDoneCount, txNumFreeDesc);
+
+    if ((txReqDoneCount == txReqDoneLast) && (txNumFreeDesc < kNumTxDesc)) {
+        if (++deadlockWarn >= kTxDeadlockTreshhold) {
+            IOLog("Ethernet [RealtekRTL8111]: Tx deadlock detected.\n");
+            /* Stop and cleanup txQueue. Also set the link status to down. */
+            txQueue->stop();
+            txQueue->flush();
+            linkUp = false;
+            setLinkStatus(kIONetworkLinkValid);
+            
+            /* Lock the transmitter. */
+            IOLockLock(txLock);
+            
+            /* Reset NIC and cleanup both descriptor rings. */
+            rtl8168_nic_reset(&linuxData);
+            txClearDescriptors(true);
+            rxInterrupt();
+            rxNextDescIndex = 0;
+            deadlockWarn = 0;
+
+            /* Reinitialize NIC and release txLock. */
+            enableRTL8111();
+            IOLockUnlock(txLock);
+            /* timerSource and txQueue will be restarted when the link has been reestablished. */
+            goto done;
+        }
+    } else {
+        /* Some chips are unable to dump the tally counter while the receiver is disabled. */
+        if (ReadReg8(ChipCmd) & CmdRxEnb) {
+            WriteReg32(CounterAddrHigh, (statPhyAddr >> 32));
+            cmd = (statPhyAddr & 0x00000000ffffffff);
+            WriteReg32(CounterAddrLow, cmd);
+            WriteReg32(CounterAddrLow, cmd | CounterDump);
+            needsUpdate = true;
+        }
+        deadlockWarn = 0;
+    }
+    timerSource->setTimeoutMS(kTimeoutMS);
+
+done:
+    txReqDoneLast = txReqDoneCount;
+
     //DebugLog("timerAction() <===\n");
 }
 

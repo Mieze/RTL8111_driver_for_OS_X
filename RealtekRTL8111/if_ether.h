@@ -1,10 +1,22 @@
-//
-//  if_ether.h
-//  RealtekRTL8111
-//
-//  Created by Laura Müller on 16.01.13.
-//  Copyright (c) 2013 Laura Müller. All rights reserved.
-//
+/* if_ether.h -- Definitions from the linux kernel source needed by the linux code.
+ *
+ * Copyright (c) 2013 Laura Müller <laura-mueller@uni-duesseldorf.de>
+ * All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * Driver for Realtek RTL8111x PCIe ethernet controllers.
+ *
+ * This driver is based on Realtek's r8168 Linux driver.
+ */
 
 #ifndef RTL8111Ethernet_if_ether_h
 #define RTL8111Ethernet_if_ether_h

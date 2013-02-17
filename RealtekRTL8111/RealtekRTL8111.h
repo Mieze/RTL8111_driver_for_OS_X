@@ -101,7 +101,7 @@ typedef struct RtlStatData {
 #define kTimeoutMS 1000
 
 /* transmitter deadlock treshhold in seconds. */
-#define kTxDeadlockTreshhold 3
+#define kTxDeadlockTreshhold 2
 
 enum
 {
