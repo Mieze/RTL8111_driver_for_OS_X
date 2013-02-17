@@ -13,7 +13,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * Driver for Realtek RTL8111x PCI-E ethernet.
+ * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
  * This driver is based on Realtek's r8168 Linux driver.
  */
@@ -74,7 +74,6 @@ bool RTL8111::init(OSDictionary *properties)
         pciDeviceData.subsystem_vendor = 0;
         pciDeviceData.subsystem_device = 0;
         linuxData.pci_dev = &pciDeviceData;
-        txTimeoutValue = 1250000;
         unitNumber = 0;
     }
     
@@ -265,6 +264,8 @@ IOReturn RTL8111::setPowerState(unsigned long powerStateOrdinal, IOService *poli
     
     DebugLog("setPowerState() ===>\n");
     
+    DebugLog("Ethernet [RealtekRTL8111]: swithing to power state %lu.\n", powerStateOrdinal);
+    
     DebugLog("setPowerState() <===\n");
 
     return result;
@@ -292,7 +293,7 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     DebugLog("enable() ===>\n");
 
     if (isEnabled) {
-        DebugLog("Interface already enabled.\n");
+        DebugLog("Ethernet [RealtekRTL8111]: Interface already enabled.\n");
         result = kIOReturnSuccess;
         goto done;
     }
@@ -309,7 +310,7 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     selectedMedium = getSelectedMedium();
     
     if (!selectedMedium) {
-        DebugLog("No medium selected. Falling back to autonegotiation.\n");
+        DebugLog("Ethernet [RealtekRTL8111]: No medium selected. Falling back to autonegotiation.\n");
         selectedMedium = mediumTable[MEDIUM_INDEX_AUTO];
     }
     selectMedium(selectedMedium);
@@ -324,6 +325,7 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     needsUpdate = false;
     txQueue->setCapacity(kTransmitQueueCapacity);
     isEnabled = true;
+    stalled = false;
 
     result = kIOReturnSuccess;
     
@@ -350,15 +352,10 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
     if (useMSI)
         interruptSource->disable();
 
-    DebugLog("Interrupt disabled.\n");
-
     txQueue->stop();
     txQueue->setCapacity(0);
-    txQueue->flush();
-    DebugLog("Queue stopped.\n");
-    
+    txQueue->flush();    
     disableRTL8111();
-    DebugLog("Chip disabled.\n");
 
     setLinkStatus(kIONetworkLinkValid);
     linkUp = false;
@@ -397,25 +394,29 @@ UInt32 RTL8111::outputPacket(mbuf_t m, void *param)
     //DebugLog("outputPacket() ===>\n");
     
     if (!(isEnabled && linkUp)) {
-        DebugLog("Interface down. Dropping packet.\n");
+        DebugLog("Ethernet [RealtekRTL8111]: Interface down. Dropping packet.\n");
         goto error1;
     }
     
     if (!IOLockTryLock(txLock)) {
-        DebugLog("Couldn't aquire txLock. Dropping packet.\n");
+        DebugLog("Ethernet [RealtekRTL8111]: Couldn't aquire txLock. Dropping packet.\n");
         goto error1;
     }
     
     if (mbuf_get_tso_requested(m, &tsoFlags, &mssValue)) {
-        DebugLog("mbuf_get_tso_requested() failed.\n");
+        DebugLog("Ethernet [RealtekRTL8111]: mbuf_get_tso_requested() failed. Dropping packet.\n");
         goto error2;
     }
     
     numSegs = txMbufCursor->getPhysicalSegmentsWithCoalesce(m, &txSegments[0], kMaxSegs);
     
+    if (!numSegs) {
+        DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed. Dropping packet.\n");
+        goto error2;
+    }
     /* Alloc required number of descriptors. */
-    if ((txNumFreeDesc < numSegs) || !numSegs) {
-        DebugLog("Not enough descriptors. Stalling.\n");
+    if ((txNumFreeDesc < numSegs)) {
+        DebugLog("Ethernet [RealtekRTL8111]: Not enough descriptors. Stalling.\n");
         result = kIOReturnOutputStall;
         stalled = true;
         goto error2;
@@ -909,11 +910,11 @@ bool RTL8111::initEventSources(IOService *provider)
         intrIndex++;
     }
     if (msiIndex != -1) {
-        DebugLog("MSI interrupt index: %d\n", msiIndex);
+        DebugLog("Ethernet [RealtekRTL8111]: MSI interrupt index: %d\n", msiIndex);
         interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurred), provider, msiIndex);
     }
     if (!interruptSource) {
-        DebugLog("Warning: MSI index was not found or MSI interrupt could not be enabled.\n");
+        DebugLog("Ethernet [RealtekRTL8111]: Warning: MSI index was not found or MSI interrupt could not be enabled.\n");
         interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurred), provider);
         useMSI = false;
     } else {
@@ -996,8 +997,6 @@ bool RTL8111::setupDMADescriptors()
         goto error2;
     }
     
-    DebugLog("txDescArray=0x%llx, pyhAddr=0x%llx\n", (UInt64)txDescArray, txPhyAddr);
-
     /* Create receiver descriptor array. */
     rxBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMapInhibitCache), kRxDescSize, 0xFFFFFFFFFFFFFF00ULL);
     
@@ -1192,8 +1191,8 @@ void RTL8111::txInterrupt()
         ++txDirtyDescIndex &= kTxDescMask;
     }
     if (stalled && (txNumFreeDesc >= kMaxSegs)) {
-        DebugLog("Restart queue!\n");
-        txQueue->start();
+        DebugLog("Ethernet [RealtekRTL8111]: Restart stalled queue!\n");
+        txQueue->service();
         stalled = false;
     }
     if (oldDirtyIndex != txDirtyDescIndex)
@@ -1221,7 +1220,7 @@ void RTL8111::rxInterrupt()
         
         /* As we don't support jumbo frames we consider fragmented packets as errors. */
         if ((descStatus1 & (FirstFrag|LastFrag)) != (FirstFrag|LastFrag)) {
-            DebugLog("Fragmented packet.\n");
+            DebugLog("Ethernet [RealtekRTL8111]: Fragmented packet.\n");
             netStats->inputErrors++;
             opts1 |= kRxBufferPktSize;
             goto nextDesc;
@@ -1239,7 +1238,7 @@ void RTL8111::rxInterrupt()
         
         if (!newPkt) {
             /* Allocation of a new packet failed so that we must leave the original packet in place. */
-            DebugLog("replaceOrCopyPacket() failed.\n");
+            DebugLog("Ethernet [RealtekRTL8111]: replaceOrCopyPacket() failed.\n");
             netStats->inputErrors++;
             opts1 |= kRxBufferPktSize;
             goto nextDesc;
@@ -1248,7 +1247,7 @@ void RTL8111::rxInterrupt()
         /* If the packet was replaced we have to update the descriptor's buffer address. */
         if (replaced) {
             if (rxMbufCursor->getPhysicalSegmentsWithCoalesce(bufPkt, &rxSegment, 1) != 1) {
-                DebugLog("getPhysicalSegmentsWithCoalesce() failed.\n");
+                DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed.\n");
                 freePacket(bufPkt);
                 netStats->inputErrors++;
                 opts1 |= kRxBufferPktSize;
@@ -1429,7 +1428,7 @@ void RTL8111::checkLinkStatus()
 		} else if ((tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22 || tp->mcfg == CFG_METHOD_24) && isEnabled) {
 			if ((ReadReg8(ChipCmd) & (CmdRxEnb | CmdTxEnb)) == 0) {
 				//rtl8168_init_ring_indexes(tp);
-                fillDescriptorAddr(baseAddr, txPhyAddr, rxPhyAddr);
+                //fillDescriptorAddr(baseAddr, txPhyAddr, rxPhyAddr);
                 WriteReg8(ChipCmd, CmdRxEnb | CmdTxEnb);
 			}
 		} else if (tp->mcfg == CFG_METHOD_23) {
@@ -1478,6 +1477,12 @@ void RTL8111::checkLinkStatus()
         
         /* Restart txQueue, statistics updates and watchdog. */
         txQueue->start();
+        
+        if (stalled) {
+            txQueue->service();
+            stalled = false;
+            DebugLog("Ethernet [RealtekRTL8111]: Restart stalled queue!\n");
+        }
         timerSource->setTimeoutMS(kTimeoutMS);
         IOLog("Ethernet [RealtekRTL8111]: Link up on en%u, %s, %s, %s\n", unitNumber, speedName, duplexName, flowName);
 	} else {
@@ -1587,28 +1592,34 @@ void RTL8111::timerAction(IOTimerEventSource *timer)
 
 bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
 {
+    UInt16 pmCap;
     UInt16 cmdReg;
-    //UInt16 pmCap;
-    //UInt8 pmCapOffset;
+    UInt8 pmCapOffset;
     bool result = false;
     
     cmdReg	= provider->configRead16(kIOPCIConfigCommand);
     cmdReg  &= ~kIOPCICommandIOSpace;
     cmdReg	|= (kIOPCICommandBusMaster | kIOPCICommandMemorySpace | kIOPCICommandMemWrInvalidate);
 	provider->configWrite16(kIOPCIConfigCommand, cmdReg);
-    provider->setBusMasterEnable(true);
-    
+    //provider->setBusMasterEnable(true);
+
     pciDeviceData.vendor = provider->configRead16(kIOPCIConfigVendorID);
     pciDeviceData.device = provider->configRead16(kIOPCIConfigDeviceID);
     pciDeviceData.subsystem_vendor = provider->configRead16(kIOPCIConfigSubSystemVendorID);
     pciDeviceData.subsystem_device = provider->configRead16(kIOPCIConfigSubSystemID);
-    
+        
+    if (provider->findPCICapability(kIOPCIPowerManagementCapability, &pmCapOffset)) {
+        pmCap = provider->configRead16(pmCapOffset + 2);
+        IOLog("Ethernet [RealtekRTL8111]: PCI power management capabilities: 0x%x.\n", pmCap);
+    } else {
+        IOLog("Ethernet [RealtekRTL8111]: PCI power management unsupported.\n");
+    }
     provider->enablePCIPowerManagement();
     
     baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
     
     if (!baseMap) {
-        IOLog("Ethernet [RealtekRTL8111]: region #2 not an MMIO resource, aborting\n");
+        IOLog("Ethernet [RealtekRTL8111]: region #2 not an MMIO resource, aborting.\n");
         goto done;
     }
     
@@ -1678,8 +1689,8 @@ bool RTL8111::initRTL8111()
 		currMacAddr.bytes[i] = ReadReg8(MAC0 + i);
 		origMacAddr.bytes[i] = currMacAddr.bytes[i]; /* keep the original MAC address */
 	}
-    IOLog("%s: at 0x%lx, %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
-          rtl_chip_info[tp->chipset].name, (unsigned long)baseAddr,
+    IOLog("Ethernet [RealtekRTL8111]: %s: (Chipset %d) at 0x%lx, %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
+          rtl_chip_info[tp->chipset].name, tp->chipset, (unsigned long)baseAddr,
           origMacAddr.bytes[0], origMacAddr.bytes[1],
           origMacAddr.bytes[2], origMacAddr.bytes[3],
           origMacAddr.bytes[4], origMacAddr.bytes[5]);
@@ -2744,7 +2755,8 @@ void RTL8111::startRTL8111()
                 tp->wol_enabled = WOL_DISABLED;
             break;
     }
-    
+    /* Disable wake on LAN because the driver still lacks full support. */
+    tp->wol_enabled = WOL_DISABLED;
     udelay(10);
 }
 

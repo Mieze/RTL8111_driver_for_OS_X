@@ -36,9 +36,6 @@ IOLog("[RealtekRTL8111] " format, ##args);
 
 #endif // Disable debugging.
 
-#define ErrPrint(format,args...)                                               \
-IOLog("[RealtekRTL8111] Error: " format, ##args)
-
 #define printk(args...) IOLog(args)
 /******************************************************************************/
 #pragma mark -

@@ -13,7 +13,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * Driver for Realtek RTL8111x PCIe ethernet.
+ * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
  * This driver is based on Realtek's r8168 Linux driver.
  */
@@ -209,7 +209,6 @@ private:
     UInt32 txNextDescIndex;
     UInt32 txDirtyDescIndex;
     SInt32 txNumFreeDesc;
-    UInt32 txTimeoutValue;
 
     /* receiver data */
     mbuf_t rxMbufArray[kNumRxDesc];

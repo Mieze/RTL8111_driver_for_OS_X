@@ -17,6 +17,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		D37A5F5B16CAF7D600644820 /* gpl.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = gpl.txt; sourceTree = "<group>"; };
 		D37BD67F16C605F500C255A2 /* RealtekRTL8111.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RealtekRTL8111.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		D37BD68316C605F500C255A2 /* Kernel.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Kernel.framework; path = System/Library/Frameworks/Kernel.framework; sourceTree = SDKROOT; };
 		D37BD68616C605F500C255A2 /* RealtekRTL8111-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "RealtekRTL8111-Info.plist"; sourceTree = "<group>"; };
@@ -87,6 +88,7 @@
 				D37BD69C16C6068D00C255A2 /* mii.h */,
 				D37BD69D16C6068D00C255A2 /* if_ether.h */,
 				D37BD69E16C6068D00C255A2 /* ethertool.h */,
+				D37A5F5B16CAF7D600644820 /* gpl.txt */,
 				D37BD68516C605F500C255A2 /* Supporting Files */,
 			);
 			path = RealtekRTL8111;
