@@ -29,7 +29,7 @@ extern "C" {
 
 #include <IOKit/network/IOMbufMemoryCursor.h>
 #include <IOKit/IOBufferMemoryDescriptor.h>
-#include <IOKit/IODMACommand.h>
+#include <IOKit/IOCommandGate.h>
 #include <IOKit/IOFilterInterruptEventSource.h>
 #include <IOKit/IOLib.h>
 #include <IOKit/IOLocks.h>

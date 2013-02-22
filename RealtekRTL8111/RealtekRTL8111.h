@@ -56,12 +56,14 @@ enum {
     kSpeed10MBit = 10*MBit,
 };
 
+/* RTL8111's dma descriptor. */
 typedef struct RtlDmaDesc {
     UInt32 opts1;
     UInt32 opts2;
     UInt64 addr;
 } RtlDmaDesc;
 
+/* RTL8111's statistics dump data structure */
 typedef struct RtlStatData {
 	UInt64	txPackets;
 	UInt64	rxPackets;
@@ -83,7 +85,7 @@ typedef struct RtlStatData {
 /* Tests have shown that the network stack sends packets of up to 20 segments. */
 #define kMaxSegs 24
 
-/* Don't forget to adjust the masks in case you reduce the number of descriptors. */
+/* The number of descriptors must be a power of 2. */
 #define kNumTxDesc	1024	/* Number of Tx descriptors */
 #define kNumRxDesc	1024	/* Number of Rx descriptors */
 #define kTxLastDesc    (kNumTxDesc - 1)
@@ -93,7 +95,7 @@ typedef struct RtlStatData {
 #define kTxDescSize    (kNumTxDesc*sizeof(struct RtlDmaDesc))
 #define kRxDescSize    (kNumRxDesc*sizeof(struct RtlDmaDesc))
 
-/* This is the receive buffer size (must be large engough to hold a packet). */
+/* This is the receive buffer size (must be large enough to hold a packet). */
 #define kRxBufferPktSize    2000
 #define kMCFilterLimit  32
 
@@ -101,7 +103,13 @@ typedef struct RtlStatData {
 #define kTimeoutMS 1000
 
 /* transmitter deadlock treshhold in seconds. */
-#define kTxDeadlockTreshhold 2
+#define kTxDeadlockTreshhold 3
+
+/* This definition should have been in IOPCIDevice.h. */
+enum
+{
+    kIOPCIPMCapability = 2,
+};
 
 enum
 {
@@ -165,6 +173,8 @@ public:
     
 private:
     bool initPCIConfigSpace(IOPCIDevice *provider);
+    static IOReturn setPowerStateWakeAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
+    static IOReturn setPowerStateSleepAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
     bool setupMediumDict();
     bool initEventSources(IOService *provider);
     void interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
@@ -186,6 +196,7 @@ private:
     
 private:
 	IOWorkLoop *workLoop;
+    IOCommandGate *commandGate;
 	IOPCIDevice *pciDevice;
 	OSDictionary *mediumDict;
 	IONetworkMedium *mediumTable[MEDIUM_INDEX_COUNT];
@@ -200,12 +211,13 @@ private:
     
     /* transmitter data */
     mbuf_t txMbufArray[kNumTxDesc];
+    mbuf_t txNext2FreeMbuf;
     IOBufferMemoryDescriptor *txBufDesc;
     IOPhysicalAddress64 txPhyAddr;
     struct RtlDmaDesc *txDescArray;
     IOMbufNaturalMemoryCursor *txMbufCursor;
-    UInt64 txReqDoneCount;
-    UInt64 txReqDoneLast;
+    UInt64 txDescDoneCount;
+    UInt64 txDescDoneLast;
     UInt32 txNextDescIndex;
     UInt32 txDirtyDescIndex;
     SInt32 txNumFreeDesc;
@@ -221,6 +233,9 @@ private:
     UInt32 rxConfigReg;
     UInt32 rxConfigMask;
     
+    /* power management data */
+    unsigned long powerState;
+    
     /* statistics data */
     UInt32 deadlockWarn;
     IONetworkStats *netStats;
@@ -231,7 +246,6 @@ private:
 
     UInt32 unitNumber;
     UInt32 mtu;
-	UInt32 powerState;
     UInt32 speed;
     UInt32 duplex;
     UInt32 autoneg;
@@ -248,4 +262,6 @@ private:
     bool stalled;
     bool useMSI;
     bool needsUpdate;
+    bool wolCapable;
+    bool wolActive;
 };

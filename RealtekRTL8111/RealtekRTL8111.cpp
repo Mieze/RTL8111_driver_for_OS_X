@@ -40,6 +40,7 @@ bool RTL8111::init(OSDictionary *properties)
     
     if (result) {
         workLoop = NULL;
+        commandGate = NULL;
         pciDevice = NULL;
         mediumDict = NULL;
         txQueue = NULL;
@@ -52,6 +53,7 @@ bool RTL8111::init(OSDictionary *properties)
         baseMap = NULL;
         baseAddr = NULL;
         rxMbufCursor = NULL;
+        txNext2FreeMbuf = NULL;
         txMbufCursor = NULL;
         statBufDesc = NULL;
         statPhyAddr = NULL;
@@ -75,6 +77,8 @@ bool RTL8111::init(OSDictionary *properties)
         pciDeviceData.subsystem_device = 0;
         linuxData.pci_dev = &pciDeviceData;
         unitNumber = 0;
+        wolCapable = false;
+        wolActive = false;
     }
     
 done:
@@ -99,6 +103,7 @@ void RTL8111::free()
         workLoop->release();
         workLoop = NULL;
     }
+    RELEASE(commandGate);
     RELEASE(txQueue);
 
     if (txLock) {
@@ -167,17 +172,24 @@ bool RTL8111::start(IOService *provider)
     if (!txLock) {
         goto error2;
     }
+    commandGate = getCommandGate();
+    
+    if (!commandGate) {
+        IOLog("Ethernet [RealtekRTL8111]: getCommandGate() failed.\n");
+        goto error3;
+    }
+    commandGate->retain();
     
     if (!initEventSources(provider)) {
         IOLog("Ethernet [RealtekRTL8111]: initEventSources() failed.\n");
-        goto error3;
+        goto error4;
     }
     
     result = attachInterface(reinterpret_cast<IONetworkInterface**>(&netif));
 
     if (!result) {
         IOLog("Ethernet [RealtekRTL8111]: attachInterface() failed.\n");
-        goto error3;
+        goto error4;
     }
     setLinkStatus(kIONetworkLinkValid);
     pciDevice->close(this);
@@ -186,6 +198,9 @@ bool RTL8111::start(IOService *provider)
 done:
     return result;
 
+error4:
+    RELEASE(commandGate);
+    
 error3:
     IOLockFree(txLock);
     txLock = NULL;
@@ -219,6 +234,7 @@ void RTL8111::stop(IOService *provider)
         workLoop->release();
         workLoop = NULL;
     }
+    RELEASE(commandGate);
     RELEASE(txQueue);
     
     if (txLock) {
@@ -263,9 +279,21 @@ IOReturn RTL8111::setPowerState(unsigned long powerStateOrdinal, IOService *poli
     IOReturn result = IOPMAckImplied;
     
     DebugLog("setPowerState() ===>\n");
+        
+    if (powerStateOrdinal == powerState) {
+        DebugLog("Ethernet [RealtekRTL8111]: Already in power state %lu.\n", powerStateOrdinal);
+        goto done;
+    }
+    DebugLog("Ethernet [RealtekRTL8111]: switching to power state %lu.\n", powerStateOrdinal);
     
-    DebugLog("Ethernet [RealtekRTL8111]: swithing to power state %lu.\n", powerStateOrdinal);
+    if (powerStateOrdinal == kPowerStateOff)
+        commandGate->runAction(setPowerStateSleepAction);
+    else
+        commandGate->runAction(setPowerStateWakeAction);
+
+    powerState = powerStateOrdinal;
     
+done:
     DebugLog("setPowerState() <===\n");
 
     return result;
@@ -320,7 +348,7 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     if (useMSI)
         interruptSource->enable();
 
-    txReqDoneCount = txReqDoneLast = 0;
+    txDescDoneCount = txDescDoneLast = 0;
     deadlockWarn = 0;
     needsUpdate = false;
     txQueue->setCapacity(kTransmitQueueCapacity);
@@ -346,7 +374,7 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
 
     timerSource->cancelTimeout();
     needsUpdate = false;
-    txReqDoneCount = txReqDoneLast = 0;
+    txDescDoneCount = txDescDoneLast = 0;
 
     /* In case we are using msi disable the interrupt. */
     if (useMSI)
@@ -414,12 +442,15 @@ UInt32 RTL8111::outputPacket(mbuf_t m, void *param)
         DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed. Dropping packet.\n");
         goto error2;
     }
-    /* Alloc required number of descriptors. */
-    if ((txNumFreeDesc < numSegs)) {
+    /* Alloc required number of descriptors. As the descriptor which has been freed last must be
+     * considered to be still in use we never fill the ring completely but leave at least one
+     * unused.
+     */
+    if ((txNumFreeDesc <= numSegs)) {
         DebugLog("Ethernet [RealtekRTL8111]: Not enough descriptors. Stalling.\n");
         result = kIOReturnOutputStall;
         stalled = true;
-        goto error2;
+        goto unlock;
     }
     OSAddAtomic(-numSegs, &txNumFreeDesc);
     index = txNextDescIndex;
@@ -471,7 +502,8 @@ UInt32 RTL8111::outputPacket(mbuf_t m, void *param)
 
     /* Set the polling bit. */
     WriteReg8(TxPoll, NPQ);
-        
+
+unlock:
     IOLockUnlock(txLock);
     
 done:
@@ -537,7 +569,6 @@ bool RTL8111::configureInterface(IONetworkInterface *interface)
         goto done;
 	
     /* Get the generic network statistics structure. */
-    
     data = interface->getParameter(kIONetworkStatsKey);
     
     if (data) {
@@ -618,7 +649,7 @@ IOReturn RTL8111::setPromiscuousMode(bool active)
         IOLog("Ethernet [RealtekRTL8111]: Promiscuous mode enabled.\n");
         rxMode = (AcceptBroadcast | AcceptMulticast | AcceptMyPhys | AcceptAllPhys);
         mcFilter[1] = mcFilter[0] = 0xffffffff;
-    } else{
+    } else {
         rxMode = (AcceptBroadcast | AcceptMulticast | AcceptMyPhys);
         mcFilter[0] = *filterAddr++;
         mcFilter[1] = *filterAddr;
@@ -731,18 +762,35 @@ done:
 IOReturn RTL8111::setWakeOnMagicPacket(bool active)
 {
     IOReturn result = kIOReturnUnsupported;
+
+    DebugLog("setWakeOnMagicPacket() ===>\n");
+
+    if (wolCapable) {
+        linuxData.wol_enabled = active ? WOL_ENABLED : WOL_DISABLED;
+        wolActive = active;
+        result = kIOReturnSuccess;
+    }
     
-done:
+    DebugLog("setWakeOnMagicPacket() <===\n");
+
     return result;
 }
 
 IOReturn RTL8111::getPacketFilters(const OSSymbol *group, UInt32 *filters) const
 {
-    IOReturn result;
+    IOReturn result = kIOReturnSuccess;
+
+    DebugLog("getPacketFilters() ===>\n");
+
+    if ((group == gIOEthernetWakeOnLANFilterGroup) && wolCapable) {
+        *filters = kIOEthernetWakeOnMagicPacket;
+        DebugLog("Ethernet [RealtekRTL8111]: kIOEthernetWakeOnMagicPacket added to filters.\n");
+    } else {
+        result = super::getPacketFilters(group, filters);
+    }
     
-    result = super::getPacketFilters(group, filters);
-    
-done:
+    DebugLog("getPacketFilters() <===\n");
+
     return result;
 }
 
@@ -772,7 +820,6 @@ IOReturn RTL8111::setHardwareAddress(const IOEthernetAddress *addr)
 IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
 {
     IOReturn result = kIOReturnSuccess;
-    bool success;
     
     DebugLog("selectMedium() ===>\n");
     
@@ -815,7 +862,7 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 break;
         }
         rtl8168_set_speed(&linuxData, autoneg, speed, duplex);
-        success = setCurrentMedium(medium);
+        setCurrentMedium(medium);
     }
     
     DebugLog("selectMedium() <===\n");
@@ -1145,6 +1192,10 @@ void RTL8111::txClearDescriptors(bool withReset)
     
     DebugLog("txClearDescriptors() ===>\n");
     
+    if (txNext2FreeMbuf) {
+        freePacket(txNext2FreeMbuf);
+        txNext2FreeMbuf = NULL;
+    }
     for (i = 0; i < kNumTxDesc; i++) {
         txDescArray[i].opts1 = OSSwapHostToLittleInt32((i != lastIndex) ? 0 : RingEnd);
         m = txMbufArray[i];
@@ -1166,9 +1217,21 @@ void RTL8111::txClearDescriptors(bool withReset)
 
 #pragma mark --- interrupt and timer action methods ---
 
+/* Some (all?) of the RTL8111 family members don't handle descriptors properly.
+ * They randomly release control of descriptors pointing to certain packets
+ * before the request has been completed and reclaim them later.
+ *
+ * As a workaround we should:
+ * - leave returned descriptors untouched until they get reused.
+ * - never reuse the descriptor which has been returned last, i.e. leave at
+ *   least one of the descriptors in txDescArray unused.
+ * - delay freeing packets until the next descriptor has been finished or a
+ *   small period of time has passed (as these packets are really small a
+ *   few µ secs should be enough).
+ */
+
 void RTL8111::txInterrupt()
 {
-    mbuf_t m;
     SInt32 numDirty = kNumTxDesc - txNumFreeDesc;
     UInt32 oldDirtyIndex = txDirtyDescIndex;
     UInt32 descStatus;
@@ -1179,18 +1242,17 @@ void RTL8111::txInterrupt()
         if (descStatus & DescOwn)
             break;
 
-        m = txMbufArray[txDirtyDescIndex];
-        
-        if (m) {
-            freePacket(m);
-            txMbufArray[txDirtyDescIndex] = NULL;
-            txReqDoneCount++;
-        }
-        txDescArray[txDirtyDescIndex].addr = NULL;
+        /* Now it's time to free the last mbuf as we can be sure it's not in use anymore. */
+        if (txNext2FreeMbuf)
+            freePacket(txNext2FreeMbuf);
+
+        txNext2FreeMbuf = txMbufArray[txDirtyDescIndex];
+        txMbufArray[txDirtyDescIndex] = NULL;
+        txDescDoneCount++;
         OSIncrementAtomic(&txNumFreeDesc);
         ++txDirtyDescIndex &= kTxDescMask;
     }
-    if (stalled && (txNumFreeDesc >= kMaxSegs)) {
+    if (stalled && (txNumFreeDesc > kMaxSegs)) {
         DebugLog("Ethernet [RealtekRTL8111]: Restart stalled queue!\n");
         txQueue->service();
         stalled = false;
@@ -1551,11 +1613,10 @@ void RTL8111::timerAction(IOTimerEventSource *timer)
         goto done;
     }
     /* Check for tx deadlock. */
-    //DebugLog("Ethernet [RealtekRTL8111]: Check for Tx deadlock: txReqDoneCount=%llu, txNumFreeDesc=%u\n", txReqDoneCount, txNumFreeDesc);
-
-    if ((txReqDoneCount == txReqDoneLast) && (txNumFreeDesc < kNumTxDesc)) {
+    if ((txDescDoneCount == txDescDoneLast) && (txNumFreeDesc < kNumTxDesc)) {
         if (++deadlockWarn >= kTxDeadlockTreshhold) {
-            IOLog("Ethernet [RealtekRTL8111]: Tx deadlock detected.\n");
+            IOLog("Ethernet [RealtekRTL8111]: Resolving Tx deadlock.\n");
+
             /* Stop and cleanup txQueue. Also set the link status to down. */
             txQueue->stop();
             txQueue->flush();
@@ -1590,9 +1651,17 @@ void RTL8111::timerAction(IOTimerEventSource *timer)
         deadlockWarn = 0;
     }
     timerSource->setTimeoutMS(kTimeoutMS);
+    
+    /* We can savely free the mbuf here because the timer action gets called
+     * synchronized to the workloop.
+     */
+    if (txNext2FreeMbuf) {
+        freePacket(txNext2FreeMbuf);
+        txNext2FreeMbuf = NULL;
+    }
 
 done:
-    txReqDoneLast = txReqDoneCount;
+    txDescDoneLast = txDescDoneCount;
 
     //DebugLog("timerAction() <===\n");
 }
@@ -1601,29 +1670,36 @@ done:
 
 bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
 {
-    UInt16 pmCap;
     UInt16 cmdReg;
+    UInt16 pmCap;
     UInt8 pmCapOffset;
     bool result = false;
     
-    cmdReg	= provider->configRead16(kIOPCIConfigCommand);
-    cmdReg  &= ~kIOPCICommandIOSpace;
-    cmdReg	|= (kIOPCICommandBusMaster | kIOPCICommandMemorySpace | kIOPCICommandMemWrInvalidate);
-	provider->configWrite16(kIOPCIConfigCommand, cmdReg);
-    //provider->setBusMasterEnable(true);
-
+    /* Get vendor and device info. */
     pciDeviceData.vendor = provider->configRead16(kIOPCIConfigVendorID);
     pciDeviceData.device = provider->configRead16(kIOPCIConfigDeviceID);
     pciDeviceData.subsystem_vendor = provider->configRead16(kIOPCIConfigSubSystemVendorID);
     pciDeviceData.subsystem_device = provider->configRead16(kIOPCIConfigSubSystemID);
-        
+
+    /* Setup power management. */
     if (provider->findPCICapability(kIOPCIPowerManagementCapability, &pmCapOffset)) {
-        pmCap = provider->configRead16(pmCapOffset + 2);
-        IOLog("Ethernet [RealtekRTL8111]: PCI power management capabilities: 0x%x.\n", pmCap);
+        pmCap = provider->configRead16(pmCapOffset + kIOPCIPMCapability);
+        DebugLog("Ethernet [RealtekRTL8111]: PCI power management capabilities: 0x%x.\n", pmCap);
+        
+        if (pmCap & kPCIPMCPMESupportFromD3Cold) {
+            wolCapable = true;
+            IOLog("Ethernet [RealtekRTL8111]: PME# from D3 (cold) supported.\n");
+        }
     } else {
         IOLog("Ethernet [RealtekRTL8111]: PCI power management unsupported.\n");
     }
-    provider->enablePCIPowerManagement();
+    provider->enablePCIPowerManagement(kPCIPMCSPowerStateD0);
+    
+    /* Enable the device. */
+    cmdReg	= provider->configRead16(kIOPCIConfigCommand);
+    cmdReg  &= ~kIOPCICommandIOSpace;
+    cmdReg	|= (kIOPCICommandBusMaster | kIOPCICommandMemorySpace | kIOPCICommandMemWrInvalidate);
+	provider->configWrite16(kIOPCIConfigCommand, cmdReg);
     
     baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
     
@@ -1631,13 +1707,38 @@ bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
         IOLog("Ethernet [RealtekRTL8111]: region #2 not an MMIO resource, aborting.\n");
         goto done;
     }
-    
     baseAddr = reinterpret_cast<volatile void *>(baseMap->getVirtualAddress());
     linuxData.mmio_addr = baseAddr;
     result = true;
     
 done:
     return result;
+}
+
+IOReturn RTL8111::setPowerStateWakeAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4)
+{
+    RTL8111 *ethCtlr = OSDynamicCast(RTL8111, owner);
+    
+    if (ethCtlr)
+        ethCtlr->pciDevice->enablePCIPowerManagement(kPCIPMCSPowerStateD0);
+
+    return kIOReturnSuccess;
+}
+
+IOReturn RTL8111::setPowerStateSleepAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4)
+{    
+    RTL8111 *ethCtlr = OSDynamicCast(RTL8111, owner);
+    IOPCIDevice *dev;
+    
+    if (ethCtlr) {
+        dev = ethCtlr->pciDevice;
+        
+        if (ethCtlr->wolActive)
+            dev->enablePCIPowerManagement(kPCIPMCSPMEStatus | kPCIPMCSPMEEnable | kPCIPMCSPowerStateD3);
+        else
+            dev->enablePCIPowerManagement(kPCIPMCSPowerStateD3);
+    }
+    return kIOReturnSuccess;
 }
 
 bool RTL8111::initRTL8111()
@@ -1758,6 +1859,7 @@ void RTL8111::startRTL8111()
     UInt8 device_control, options1, options2;
     UInt16 ephy_data;
     UInt32 csi_tmp;
+    bool wol;
     
     switch (tp->mcfg) {
         case CFG_METHOD_1:
@@ -2749,23 +2851,20 @@ void RTL8111::startRTL8111()
         case CFG_METHOD_22:
         case CFG_METHOD_23:
         case CFG_METHOD_24:
-            if ((options1 & LinkUp) || (csi_tmp & BIT_0) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF))
-                tp->wol_enabled = WOL_ENABLED;
-            else
-                tp->wol_enabled = WOL_DISABLED;
+            wol = ((options1 & LinkUp) || (csi_tmp & BIT_0) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF)) ? true : false;
             break;
+            
         case CFG_METHOD_DEFAULT:
-            tp->wol_enabled = WOL_DISABLED;
+            wol = false;
             break;
+            
         default:
-            if ((options1 & LinkUp) || (options1 & MagicPacket) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF))
-                tp->wol_enabled = WOL_ENABLED;
-            else
-                tp->wol_enabled = WOL_DISABLED;
+            wol = ((options1 & LinkUp) || (options1 & MagicPacket) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF)) ? true : false;
             break;
     }
-    /* Disable wake on LAN because the driver still lacks full support. */
-    tp->wol_enabled = WOL_DISABLED;
+    /* Set wake on LAN support and status. */
+    wolCapable = wolCapable && wol;
+    tp->wol_enabled = (wolCapable && wolActive) ? WOL_ENABLED : WOL_DISABLED;
     udelay(10);
 }
 

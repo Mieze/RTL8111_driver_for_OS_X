@@ -267,8 +267,8 @@
 				GCC_PREFIX_HEADER = "RealtekRTL8111/RealtekRTL8111-Prefix.pch";
 				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
 				INFOPLIST_FILE = "RealtekRTL8111/RealtekRTL8111-Info.plist";
-				INSTALL_GROUP = wheel;
-				INSTALL_OWNER = root;
+				INSTALL_GROUP = "$(GROUP)";
+				INSTALL_OWNER = "$(USER)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
 				MODULE_VERSION = 1.0.0d1;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -285,8 +285,8 @@
 				GCC_PREFIX_HEADER = "RealtekRTL8111/RealtekRTL8111-Prefix.pch";
 				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
 				INFOPLIST_FILE = "RealtekRTL8111/RealtekRTL8111-Info.plist";
-				INSTALL_GROUP = wheel;
-				INSTALL_OWNER = root;
+				INSTALL_GROUP = "$(GROUP)";
+				INSTALL_OWNER = "$(USER)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
 				MODULE_VERSION = 1.0.0d1;
 				PRODUCT_NAME = "$(TARGET_NAME)";
