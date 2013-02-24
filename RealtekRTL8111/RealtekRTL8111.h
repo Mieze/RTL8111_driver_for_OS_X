@@ -15,7 +15,7 @@
  *
  * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
- * This driver is based on Realtek's r8168 Linux driver.
+ * This driver is based on Realtek's r8168 Linux driver (8.035.0).
  */
 
 #include "RealtekRTL8111Linux.h"
@@ -87,7 +87,7 @@ typedef struct RtlStatData {
 
 /* The number of descriptors must be a power of 2. */
 #define kNumTxDesc	1024	/* Number of Tx descriptors */
-#define kNumRxDesc	1024	/* Number of Rx descriptors */
+#define kNumRxDesc	512     /* Number of Rx descriptors */
 #define kTxLastDesc    (kNumTxDesc - 1)
 #define kRxLastDesc    (kNumRxDesc - 1)
 #define kTxDescMask    (kNumTxDesc - 1)
@@ -97,6 +97,7 @@ typedef struct RtlStatData {
 
 /* This is the receive buffer size (must be large enough to hold a packet). */
 #define kRxBufferPktSize    2000
+#define kRxNumSpareMbufs    50
 #define kMCFilterLimit  32
 
 /* statitics timer period in ms. */
@@ -179,6 +180,7 @@ private:
     bool initEventSources(IOService *provider);
     void interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
     void timerAction(IOTimerEventSource *timer);
+    void pciErrorInterrupt();
     void txInterrupt();
     void rxInterrupt();
     bool setupDMADescriptors();
@@ -193,6 +195,7 @@ private:
     void disableRTL8111();
     void startRTL8111();
     void setOffset79(UInt8 setting);
+    void restartRTL8111();
     
 private:
 	IOWorkLoop *workLoop;

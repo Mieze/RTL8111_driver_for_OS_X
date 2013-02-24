@@ -15,7 +15,7 @@
  *
  * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
- * This driver is based on Realtek's r8168 Linux driver.
+ * This driver is based on Realtek's r8168 Linux driver (8.035.0).
  */
 
 
@@ -722,11 +722,17 @@ IOReturn RTL8111::getChecksumSupport(UInt32 *checksumMask, UInt32 checksumFamily
     IOReturn result = kIOReturnUnsupported;
     
     if ((checksumFamily == kChecksumFamilyTCPIP) && checksumMask) {
-        if (isOutput)
+        if (isOutput) {
             *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP);
-        else
-            *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP);
-
+        } else {
+            /* The MSI Z77MA-G45'S onboard NIC is broken so that we have to
+             * disable rx checksum offload.
+             */
+            if ((pciDeviceData.subsystem_vendor == 0x1462) && (pciDeviceData.subsystem_device == 0x7759))
+                *checksumMask = 0;
+            else
+                *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP);
+        }
         result = kIOReturnSuccess;
     }
     return result;
@@ -1009,6 +1015,7 @@ error1:
 bool RTL8111::setupDMADescriptors()
 {
     IOPhysicalSegment rxSegment;
+    mbuf_t spareMbuf[kRxNumSpareMbufs];
     mbuf_t m;
     UInt32 i;
     UInt32 opts1;
@@ -1112,6 +1119,16 @@ bool RTL8111::setupDMADescriptors()
     /* Initialize statData. */
     bzero(statData, sizeof(RtlStatData));
 
+    /* Allocate some spare mbufs and free them in order to increase the buffer pool.
+     * This seems to avoid the replaceOrCopyPacket() errors under heavy load.
+     */
+    for (i = 0; i < kRxNumSpareMbufs; i++)
+        spareMbuf[i] = allocatePacket(kRxBufferPktSize);
+
+    for (i = 0; i < kRxNumSpareMbufs; i++) {
+        if (spareMbuf[i])
+            freePacket(spareMbuf[i]);
+    }
     result = true;
     
 done:
@@ -1216,6 +1233,22 @@ void RTL8111::txClearDescriptors(bool withReset)
 }
 
 #pragma mark --- interrupt and timer action methods ---
+
+void RTL8111::pciErrorInterrupt()
+{
+    UInt16 cmdReg = pciDevice->configRead16(kIOPCIConfigCommand);
+    UInt16 statusReg = pciDevice->configRead16(kIOPCIConfigStatus);
+    
+    DebugLog("Ethernet [RealtekRTL8111]: PCI error: cmdReg=0x%x, statusReg=0x%x\n", cmdReg, statusReg);
+
+    cmdReg |= (kIOPCICommandSERR | kIOPCICommandParityError);
+    statusReg &= (kIOPCIStatusParityErrActive | kIOPCIStatusSERRActive | kIOPCIStatusMasterAbortActive | kIOPCIStatusTargetAbortActive | kIOPCIStatusTargetAbortCapable);
+    pciDevice->configWrite16(kIOPCIConfigCommand, cmdReg);
+    pciDevice->configWrite16(kIOPCIConfigStatus, statusReg);
+    
+    /* Reset the NIC in order to resume operation. */
+    restartRTL8111();
+}
 
 /* Some (all?) of the RTL8111 family members don't handle descriptors properly.
  * They randomly release control of descriptors pointing to certain packets
@@ -1582,13 +1615,16 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     /* hotplug/major error/no more work/shared irq */
     if ((status == 0xFFFF) || !status)
         goto done;
-    
+
+    if (status & SYSErr)
+        pciErrorInterrupt();
+
     /* Rx interrupt */
     if (status & (RxOK | RxDescUnavail | RxFIFOOver))
         rxInterrupt();
     
     /* Tx interrupt */
-    if (status & (TxOK | TxErr))
+    if (status & (TxOK | TxErr | TxDescUnavail))
         txInterrupt();
     
     if (status & LinkChg)
@@ -1597,7 +1633,7 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     /* Check if a statistics dump has been completed. */
     if (needsUpdate && !(ReadReg32(CounterAddrLow) & CounterDump))
         updateStatitics();
-    
+        
 done:
     WriteReg16(IntrStatus, 0xffff);
 	WriteReg16(IntrMask, linuxData.intr_mask);
@@ -1615,28 +1651,16 @@ void RTL8111::timerAction(IOTimerEventSource *timer)
     /* Check for tx deadlock. */
     if ((txDescDoneCount == txDescDoneLast) && (txNumFreeDesc < kNumTxDesc)) {
         if (++deadlockWarn >= kTxDeadlockTreshhold) {
+#ifdef DEBUG
+            UInt32 i, index;
+            
+            for (i = 0; i < 10; i++) {
+                index = ((txDirtyDescIndex - 5 + i) & kTxDescMask);
+                DebugLog("Ethernet [RealtekRTL8111]: desc[%u]: opts1=0x%x, opts2=0x%x, addr=0x%llx.\n", index, txDescArray[index].opts1, txDescArray[index].opts2, txDescArray[index].addr);
+            }
+#endif
             IOLog("Ethernet [RealtekRTL8111]: Resolving Tx deadlock.\n");
-
-            /* Stop and cleanup txQueue. Also set the link status to down. */
-            txQueue->stop();
-            txQueue->flush();
-            linkUp = false;
-            setLinkStatus(kIONetworkLinkValid);
-            
-            /* Lock the transmitter. */
-            IOLockLock(txLock);
-            
-            /* Reset NIC and cleanup both descriptor rings. */
-            rtl8168_nic_reset(&linuxData);
-            txClearDescriptors(true);
-            rxInterrupt();
-            rxNextDescIndex = 0;
-            deadlockWarn = 0;
-
-            /* Reinitialize NIC and release txLock. */
-            enableRTL8111();
-            IOLockUnlock(txLock);
-            /* timerSource and txQueue will be restarted when the link has been reestablished. */
+            restartRTL8111();
             goto done;
         }
     } else {
@@ -1688,7 +1712,7 @@ bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
         
         if (pmCap & kPCIPMCPMESupportFromD3Cold) {
             wolCapable = true;
-            IOLog("Ethernet [RealtekRTL8111]: PME# from D3 (cold) supported.\n");
+            DebugLog("Ethernet [RealtekRTL8111]: PME# from D3 (cold) supported.\n");
         }
     } else {
         IOLog("Ethernet [RealtekRTL8111]: PCI power management unsupported.\n");
@@ -1807,10 +1831,8 @@ bool RTL8111::initRTL8111()
     
     tp->cp_cmd = ReadReg16(CPlusCmd);
     tp->max_jumbo_frame_size = rtl_chip_info[tp->chipset].jumbo_frame_sz;
-    tp->intr_mask = LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK;
-    /*
-     tp->intr_mask =  SYSErr | LinkChg | TxErr | TxOK | TxDescUnavail | RxDescUnavail | RxErr | RxOK | PCSTimeout;
-     */
+    tp->intr_mask = (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
+
     /* Get the RxConfig parameters. */
     rxConfigReg = rtl_chip_info[tp->chipset].RCR_Cfg;
     rxConfigMask = rtl_chip_info[tp->chipset].RxConfigMask;
@@ -1850,6 +1872,34 @@ void RTL8111::disableRTL8111()
     rtl8168_sleep_rx_enable(tp);
 	rtl8168_powerdown_pll(tp);
     
+    IOLockUnlock(txLock);
+}
+
+/* Reset the NIC in case a tx deadlock or a pci error occurred. timerSource and txQueue
+ * are stopped immediately but will be restarted bycheckLinkStatus() when the link has 
+ * been reestablished.
+ */
+
+void RTL8111::restartRTL8111()
+{
+    /* Stop and cleanup txQueue. Also set the link status to down. */
+    txQueue->stop();
+    txQueue->flush();
+    linkUp = false;
+    setLinkStatus(kIONetworkLinkValid);
+    
+    /* Lock the transmitter. */
+    IOLockLock(txLock);
+    
+    /* Reset NIC and cleanup both descriptor rings. */
+    rtl8168_nic_reset(&linuxData);
+    txClearDescriptors(true);
+    rxInterrupt();
+    rxNextDescIndex = 0;
+    deadlockWarn = 0;
+    
+    /* Reinitialize NIC and release txLock. */
+    enableRTL8111();
     IOLockUnlock(txLock);
 }
 

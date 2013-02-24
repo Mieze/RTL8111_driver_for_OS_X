@@ -37,7 +37,7 @@
 			<key>IOPCIMatch</key>
 			<string>0x816810ec 0x81681186</string>
 			<key>IOProbeScore</key>
-			<integer>500</integer>
+			<integer>1000</integer>
 			<key>IOProviderClass</key>
 			<string>IOPCIDevice</string>
 		</dict>
