@@ -263,6 +263,8 @@ private:
     struct IOEthernetAddress currMacAddr;
     struct IOEthernetAddress origMacAddr;
     
+    UInt16 intrMask;
+    
     /* flags */
     bool isEnabled;
 	bool promiscusMode;

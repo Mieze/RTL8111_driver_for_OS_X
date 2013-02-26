@@ -610,7 +610,7 @@ IOReturn RTL8111::getChecksumSupport(UInt32 *checksumMask, UInt32 checksumFamily
     
     if ((checksumFamily == kChecksumFamilyTCPIP) && checksumMask) {
         if (isOutput) {
-            *checksumMask = (kChecksumTCPIPv6 | kChecksumUDPIPv6 | kChecksumTCP | kChecksumUDP | kChecksumIP);
+            *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP);
         } else {
             /* The MSI Z77MA-G45'S onboard NIC is broken so that we have to
              * disable rx checksum offload.
@@ -618,7 +618,7 @@ IOReturn RTL8111::getChecksumSupport(UInt32 *checksumMask, UInt32 checksumFamily
             if ((pciDeviceData.subsystem_vendor == 0x1462) && (pciDeviceData.subsystem_device == 0x7759))
                 *checksumMask = 0;
             else
-                *checksumMask = (kChecksumTCPIPv6 | kChecksumUDPIPv6 | kChecksumTCP | kChecksumUDP | kChecksumIP);
+                *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP);
         }
         result = kIOReturnSuccess;
     }
@@ -1868,8 +1868,8 @@ void RTL8111::interruptOccurredB(OSObject *client, IOInterruptEventSource *src, 
         updateStatitics();
     
 done:
-    WriteReg16(IntrStatus, 0xffff);
-	WriteReg16(IntrMask, linuxData.intr_mask);
+    WriteReg16(IntrStatus, status);
+	WriteReg16(IntrMask, intrMask);
 }
 
 void RTL8111::interruptOccurredC(OSObject *client, IOInterruptEventSource *src, int count)
@@ -1902,8 +1902,8 @@ void RTL8111::interruptOccurredC(OSObject *client, IOInterruptEventSource *src, 
         updateStatitics();
     
 done:
-    WriteReg16(IntrStatus, 0xffff);
-	WriteReg16(IntrMask, linuxData.intr_mask);
+    WriteReg16(IntrStatus, status);
+	WriteReg16(IntrMask, intrMask);
 }
 
 void RTL8111::timerAction(IOTimerEventSource *timer)
@@ -2096,7 +2096,7 @@ bool RTL8111::initRTL8111()
     
     tp->cp_cmd = ReadReg16(CPlusCmd);
     tp->max_jumbo_frame_size = rtl_chip_info[tp->chipset].jumbo_frame_sz;
-    tp->intr_mask = (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
+    intrMask = (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
 
     /* Get the RxConfig parameters. */
     rxConfigReg = rtl_chip_info[tp->chipset].RCR_Cfg;
@@ -3139,7 +3139,7 @@ void RTL8111::startRTL8111()
     setMulticastMode(multicastMode);
     
     /* Enable all known interrupts by setting the interrupt mask. */
-    WriteReg16(IntrMask, tp->intr_mask);
+    WriteReg16(IntrMask, intrMask);
     
     WriteReg8(Cfg9346, Cfg9346_Lock);
     

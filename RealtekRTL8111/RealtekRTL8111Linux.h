@@ -1258,7 +1258,7 @@ struct rtl8168_private {
 	//unsigned int pci_cfg_is_read;
 	//unsigned int rtl8168_rx_config;
 	u16 cp_cmd;
-	u16 intr_mask;
+	//u16 intr_mask;
 	int phy_auto_nego_reg;
 	int phy_1000_ctrl_reg;
 	//u8 org_mac_addr[NODE_ADDRESS_SIZE];
