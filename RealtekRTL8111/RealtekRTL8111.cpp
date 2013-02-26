@@ -404,120 +404,7 @@ done:
 
 UInt32 RTL8111::outputPacket(mbuf_t m, void *param)
 {
-    IOPhysicalSegment txSegments[kMaxSegs];
-    RtlDmaDesc *desc, *firstDesc;
-    UInt32 result = kIOReturnOutputDropped;
-    mbuf_tso_request_flags_t tsoFlags;
-    UInt32 mssValue;
-    UInt32 tsoCmd;
-    UInt32 opts1;
-    UInt32 opts2;
-    UInt32 vlanTag;
-    UInt32 checksums;
-    UInt32 numSegs;
-    UInt32 lastSeg;
-    UInt32 index;
-    UInt32 i;
-    
-    //DebugLog("outputPacket() ===>\n");
-    
-    if (!(isEnabled && linkUp)) {
-        DebugLog("Ethernet [RealtekRTL8111]: Interface down. Dropping packet.\n");
-        goto error1;
-    }
-    
-    if (!IOLockTryLock(txLock)) {
-        DebugLog("Ethernet [RealtekRTL8111]: Couldn't aquire txLock. Dropping packet.\n");
-        goto error1;
-    }
-    
-    if (mbuf_get_tso_requested(m, &tsoFlags, &mssValue)) {
-        DebugLog("Ethernet [RealtekRTL8111]: mbuf_get_tso_requested() failed. Dropping packet.\n");
-        goto error2;
-    }
-    
-    numSegs = txMbufCursor->getPhysicalSegmentsWithCoalesce(m, &txSegments[0], kMaxSegs);
-    
-    if (!numSegs) {
-        DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed. Dropping packet.\n");
-        goto error2;
-    }
-    /* Alloc required number of descriptors. As the descriptor which has been freed last must be
-     * considered to be still in use we never fill the ring completely but leave at least one
-     * unused.
-     */
-    if ((txNumFreeDesc <= numSegs)) {
-        DebugLog("Ethernet [RealtekRTL8111]: Not enough descriptors. Stalling.\n");
-        result = kIOReturnOutputStall;
-        stalled = true;
-        goto unlock;
-    }
-    OSAddAtomic(-numSegs, &txNumFreeDesc);
-    index = txNextDescIndex;
-    txNextDescIndex = (txNextDescIndex + numSegs) & kTxDescMask;
-    firstDesc = desc = &txDescArray[index];
-    lastSeg = numSegs - 1;
-    tsoCmd = 0;
-    
-    /* First fill in the VLAN tag. */
-    opts2 = (getVlanTagDemand(m, &vlanTag)) ? (OSSwapInt16(vlanTag) | TxVlanTag) : 0;
-    
-    /* Next setup the checksum command bits. */
-    getChecksumDemand(m, kChecksumFamilyTCPIP, &checksums);
-    
-    if (checksums & (kChecksumTCP | kChecksumTCPIPv6))
-        opts2 |= linuxData.tx_tcp_csum_cmd;
-    else if (checksums & (kChecksumUDP | kChecksumUDPIPv6))
-        opts2 |= linuxData.tx_udp_csum_cmd;
-    else if (checksums & kChecksumIP)
-        opts2 |= linuxData.tx_ip_csum_cmd;
-    
-    if (tsoFlags) {
-        opts2 |= ((mssValue & MSSMask) << MSSShift_C);
-        tsoCmd = LargeSend;
-    }
-    /* And finally fill in the descriptors. */
-    for (i = 0; i < numSegs; i++) {
-        desc = &txDescArray[index];
-        opts1 = (((UInt32)txSegments[i].length) | tsoCmd);
-        opts1 |= (i == 0) ? FirstFrag : DescOwn;
-        
-        if (i == lastSeg) {
-            opts1 |= LastFrag;
-            txMbufArray[index] = m;
-        } else {
-            txMbufArray[index] = NULL;
-        }
-        if (index == kTxLastDesc)
-            opts1 |= RingEnd;
-        
-        desc->addr = OSSwapHostToLittleInt64(txSegments[i].location);
-        desc->opts2 = OSSwapHostToLittleInt32(opts2);
-        desc->opts1 = OSSwapHostToLittleInt32(opts1);
-
-        //DebugLog("opts1=0x%x, opts2=0x%x, addr=0x%llx, len=0x%llx\n", opts1, opts2, txSegments[i].location, txSegments[i].length);
-        ++index &= kTxDescMask;
-    }
-    firstDesc->opts1 |= DescOwn;
-
-    /* Set the polling bit. */
-    WriteReg8(TxPoll, NPQ);
-
-unlock:
-    IOLockUnlock(txLock);
-    
-done:
-    //DebugLog("outputPacket() <===\n");
-    
-    return result;
-    
-error2:
-    IOLockUnlock(txLock);
-    
-error1:
-    freePacket(m);
-    goto done;
-    
+    return (revisionC) ? outputPacketC(m, param) : outputPacketB(m, param);
 }
 
 void RTL8111::getPacketBufferConstraints(IOPacketBufferConstraints *constraints) const
@@ -723,7 +610,7 @@ IOReturn RTL8111::getChecksumSupport(UInt32 *checksumMask, UInt32 checksumFamily
     
     if ((checksumFamily == kChecksumFamilyTCPIP) && checksumMask) {
         if (isOutput) {
-            *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP);
+            *checksumMask = (kChecksumTCPIPv6 | kChecksumUDPIPv6 | kChecksumTCP | kChecksumUDP | kChecksumIP);
         } else {
             /* The MSI Z77MA-G45'S onboard NIC is broken so that we have to
              * disable rx checksum offload.
@@ -731,7 +618,7 @@ IOReturn RTL8111::getChecksumSupport(UInt32 *checksumMask, UInt32 checksumFamily
             if ((pciDeviceData.subsystem_vendor == 0x1462) && (pciDeviceData.subsystem_device == 0x7759))
                 *checksumMask = 0;
             else
-                *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP);
+                *checksumMask = (kChecksumTCPIPv6 | kChecksumUDPIPv6 | kChecksumTCP | kChecksumUDP | kChecksumIP);
         }
         result = kIOReturnSuccess;
     }
@@ -964,11 +851,20 @@ bool RTL8111::initEventSources(IOService *provider)
     }
     if (msiIndex != -1) {
         DebugLog("Ethernet [RealtekRTL8111]: MSI interrupt index: %d\n", msiIndex);
-        interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurred), provider, msiIndex);
+        
+        if (revisionC)
+            interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurredC), provider, msiIndex);
+        else
+            interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurredB), provider, msiIndex);
     }
     if (!interruptSource) {
         DebugLog("Ethernet [RealtekRTL8111]: Warning: MSI index was not found or MSI interrupt could not be enabled.\n");
-        interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurred), provider);
+        
+        if (revisionC)
+            interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurredC), provider);
+        else
+            interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurredB), provider);
+
         useMSI = false;
     } else {
         useMSI = true;
@@ -1232,6 +1128,243 @@ void RTL8111::txClearDescriptors(bool withReset)
     DebugLog("txClearDescriptors() <===\n");
 }
 
+#pragma mark --- outputPacket methods ---
+
+UInt32 RTL8111::outputPacketB(mbuf_t m, void *param)
+{
+    IOPhysicalSegment txSegments[kMaxSegs];
+    RtlDmaDesc *desc, *firstDesc;
+    UInt32 result = kIOReturnOutputDropped;
+    mbuf_tso_request_flags_t tsoFlags;
+    UInt32 mssValue;
+    UInt32 cmd;
+    UInt32 opts1;
+    UInt32 opts2;
+    UInt32 vlanTag;
+    UInt32 checksums;
+    UInt32 numSegs;
+    UInt32 lastSeg;
+    UInt32 index;
+    UInt32 i;
+    
+    //DebugLog("outputPacket() ===>\n");
+    
+    if (!(isEnabled && linkUp)) {
+        DebugLog("Ethernet [RealtekRTL8111]: Interface down. Dropping packet.\n");
+        goto error1;
+    }
+    
+    if (!IOLockTryLock(txLock)) {
+        DebugLog("Ethernet [RealtekRTL8111]: Couldn't aquire txLock. Dropping packet.\n");
+        goto error1;
+    }
+    
+    if (mbuf_get_tso_requested(m, &tsoFlags, &mssValue)) {
+        DebugLog("Ethernet [RealtekRTL8111]: mbuf_get_tso_requested() failed. Dropping packet.\n");
+        goto error2;
+    }
+    
+    numSegs = txMbufCursor->getPhysicalSegmentsWithCoalesce(m, &txSegments[0], kMaxSegs);
+    
+    if (!numSegs) {
+        DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed. Dropping packet.\n");
+        goto error2;
+    }
+    /* Alloc required number of descriptors. As the descriptor which has been freed last must be
+     * considered to be still in use we never fill the ring completely but leave at least one
+     * unused.
+     */
+    if ((txNumFreeDesc <= numSegs)) {
+        DebugLog("Ethernet [RealtekRTL8111]: Not enough descriptors. Stalling.\n");
+        result = kIOReturnOutputStall;
+        stalled = true;
+        goto unlock;
+    }
+    OSAddAtomic(-numSegs, &txNumFreeDesc);
+    index = txNextDescIndex;
+    txNextDescIndex = (txNextDescIndex + numSegs) & kTxDescMask;
+    firstDesc = desc = &txDescArray[index];
+    lastSeg = numSegs - 1;
+    
+    /* First fill in the VLAN tag. */
+    opts2 = (getVlanTagDemand(m, &vlanTag)) ? (OSSwapInt16(vlanTag) | TxVlanTag) : 0;
+
+    if (tsoFlags) {
+        /* This is a TSO operation so that there are no checksum command bits. */
+        cmd = (LargeSend |((mssValue & MSSMask) << MSSShift));
+    } else {
+        /* Setup the checksum command bits. */
+        getChecksumDemand(m, kChecksumFamilyTCPIP, &checksums);
+        
+        if (checksums & (kChecksumTCP | kChecksumTCPIPv6))
+            cmd = (TxIPCS | TxTCPCS);
+        else if (checksums & (kChecksumUDP | kChecksumUDPIPv6))
+            cmd = (TxIPCS | TxUDPCS);
+        else if (checksums & kChecksumIP)
+            cmd = TxIPCS;
+    }
+    /* And finally fill in the descriptors. */
+    for (i = 0; i < numSegs; i++) {
+        desc = &txDescArray[index];
+        opts1 = (((UInt32)txSegments[i].length) | cmd);
+        opts1 |= (i == 0) ? FirstFrag : DescOwn;
+        
+        if (i == lastSeg) {
+            opts1 |= LastFrag;
+            txMbufArray[index] = m;
+        } else {
+            txMbufArray[index] = NULL;
+        }
+        if (index == kTxLastDesc)
+            opts1 |= RingEnd;
+        
+        desc->addr = OSSwapHostToLittleInt64(txSegments[i].location);
+        desc->opts2 = OSSwapHostToLittleInt32(opts2);
+        desc->opts1 = OSSwapHostToLittleInt32(opts1);
+        
+        //DebugLog("opts1=0x%x, opts2=0x%x, addr=0x%llx, len=0x%llx\n", opts1, opts2, txSegments[i].location, txSegments[i].length);
+        ++index &= kTxDescMask;
+    }
+    firstDesc->opts1 |= DescOwn;
+    
+    /* Set the polling bit. */
+    WriteReg8(TxPoll, NPQ);
+    
+unlock:
+    IOLockUnlock(txLock);
+    
+done:
+    //DebugLog("outputPacket() <===\n");
+    
+    return result;
+    
+error2:
+    IOLockUnlock(txLock);
+    
+error1:
+    freePacket(m);
+    goto done;
+    
+}
+
+UInt32 RTL8111::outputPacketC(mbuf_t m, void *param)
+{
+    IOPhysicalSegment txSegments[kMaxSegs];
+    RtlDmaDesc *desc, *firstDesc;
+    UInt32 result = kIOReturnOutputDropped;
+    mbuf_tso_request_flags_t tsoFlags;
+    UInt32 mssValue;
+    UInt32 tsoCmd;
+    UInt32 opts1;
+    UInt32 opts2;
+    UInt32 vlanTag;
+    UInt32 checksums;
+    UInt32 numSegs;
+    UInt32 lastSeg;
+    UInt32 index;
+    UInt32 i;
+    
+    //DebugLog("outputPacket() ===>\n");
+    
+    if (!(isEnabled && linkUp)) {
+        DebugLog("Ethernet [RealtekRTL8111]: Interface down. Dropping packet.\n");
+        goto error1;
+    }
+    
+    if (!IOLockTryLock(txLock)) {
+        DebugLog("Ethernet [RealtekRTL8111]: Couldn't aquire txLock. Dropping packet.\n");
+        goto error1;
+    }
+    
+    if (mbuf_get_tso_requested(m, &tsoFlags, &mssValue)) {
+        DebugLog("Ethernet [RealtekRTL8111]: mbuf_get_tso_requested() failed. Dropping packet.\n");
+        goto error2;
+    }
+    
+    numSegs = txMbufCursor->getPhysicalSegmentsWithCoalesce(m, &txSegments[0], kMaxSegs);
+    
+    if (!numSegs) {
+        DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed. Dropping packet.\n");
+        goto error2;
+    }
+    /* Alloc required number of descriptors. As the descriptor which has been freed last must be
+     * considered to be still in use we never fill the ring completely but leave at least one
+     * unused.
+     */
+    if ((txNumFreeDesc <= numSegs)) {
+        DebugLog("Ethernet [RealtekRTL8111]: Not enough descriptors. Stalling.\n");
+        result = kIOReturnOutputStall;
+        stalled = true;
+        goto unlock;
+    }
+    OSAddAtomic(-numSegs, &txNumFreeDesc);
+    index = txNextDescIndex;
+    txNextDescIndex = (txNextDescIndex + numSegs) & kTxDescMask;
+    firstDesc = desc = &txDescArray[index];
+    lastSeg = numSegs - 1;
+    tsoCmd = 0;
+    
+    /* First fill in the VLAN tag. */
+    opts2 = (getVlanTagDemand(m, &vlanTag)) ? (OSSwapInt16(vlanTag) | TxVlanTag) : 0;
+    
+    /* Next setup the checksum command bits. */
+    getChecksumDemand(m, kChecksumFamilyTCPIP, &checksums);
+    
+    if (checksums & (kChecksumTCP | kChecksumTCPIPv6))
+        opts2 |= (TxIPCS_C | TxTCPCS_C);
+    else if (checksums & (kChecksumUDP | kChecksumUDPIPv6))
+        opts2 |= (TxIPCS_C | TxUDPCS_C);
+    else if (checksums & kChecksumIP)
+        opts2 |= TxIPCS_C;
+    
+    if (tsoFlags) {
+        opts2 |= ((mssValue & MSSMask) << MSSShift_C);
+        tsoCmd = LargeSend;
+    }
+    /* And finally fill in the descriptors. */
+    for (i = 0; i < numSegs; i++) {
+        desc = &txDescArray[index];
+        opts1 = (((UInt32)txSegments[i].length) | tsoCmd);
+        opts1 |= (i == 0) ? FirstFrag : DescOwn;
+        
+        if (i == lastSeg) {
+            opts1 |= LastFrag;
+            txMbufArray[index] = m;
+        } else {
+            txMbufArray[index] = NULL;
+        }
+        if (index == kTxLastDesc)
+            opts1 |= RingEnd;
+        
+        desc->addr = OSSwapHostToLittleInt64(txSegments[i].location);
+        desc->opts2 = OSSwapHostToLittleInt32(opts2);
+        desc->opts1 = OSSwapHostToLittleInt32(opts1);
+        
+        //DebugLog("opts1=0x%x, opts2=0x%x, addr=0x%llx, len=0x%llx\n", opts1, opts2, txSegments[i].location, txSegments[i].length);
+        ++index &= kTxDescMask;
+    }
+    firstDesc->opts1 |= DescOwn;
+    
+    /* Set the polling bit. */
+    WriteReg8(TxPoll, NPQ);
+    
+unlock:
+    IOLockUnlock(txLock);
+    
+done:
+    //DebugLog("outputPacket() <===\n");
+    
+    return result;
+    
+error2:
+    IOLockUnlock(txLock);
+    
+error1:
+    freePacket(m);
+    goto done;
+    
+}
+
 #pragma mark --- interrupt and timer action methods ---
 
 void RTL8111::pciErrorInterrupt()
@@ -1294,7 +1427,7 @@ void RTL8111::txInterrupt()
         WriteReg8(TxPoll, NPQ);
 }
 
-void RTL8111::rxInterrupt()
+void RTL8111::rxInterruptB()
 {
     IOPhysicalSegment rxSegment;
     RtlDmaDesc *desc = &rxDescArray[rxNextDescIndex];
@@ -1307,7 +1440,7 @@ void RTL8111::rxInterrupt()
     UInt16 vlanTag;
     bool replaced;
     bool goodPkt = false;
-        
+    
     while (!((descStatus1 = OSSwapLittleToHostInt32(desc->opts1)) & DescOwn)) {
         opts1 = (rxNextDescIndex == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
         opts2 = 0;
@@ -1328,7 +1461,7 @@ void RTL8111::rxInterrupt()
         pktType = descStatus1 & RxProtoMask;
         
         //DebugLog("rxInterrupt(): descStatus1=0x%x, descStatus2=0x%x, pktSize=%u\n", descStatus1, descStatus2, pktSize);
-
+        
         newPkt = replaceOrCopyPacket(&bufPkt, pktSize, &replaced);
         
         if (!newPkt) {
@@ -1355,7 +1488,107 @@ void RTL8111::rxInterrupt()
             opts1 |= kRxBufferPktSize;
         }
         resultMask = validMask = 0;
+        
+        /* Get the result of the checksum calculation and store it in the packet. */
+        if (pktType == RxProtoTCP) {
+            /* TCP packet */
+            resultMask = (kChecksumTCPIPv6 | kChecksumTCP | kChecksumIP);
+            validMask = (descStatus1 & RxTCPF) ? 0 : (kChecksumTCPIPv6 | kChecksumTCP | kChecksumIP);
+        } else if (pktType == RxProtoUDP) {
+            /* UDP packet */
+            resultMask = (kChecksumUDPIPv6 | kChecksumUDP | kChecksumIP);
+            validMask = (descStatus1 & RxUDPF) ? 0 : (kChecksumUDPIPv6 | kChecksumUDP | kChecksumIP);
+        } else if (pktType == RxProtoIP) {
+            /* IP packet */
+            resultMask = kChecksumIP;
+            validMask = (descStatus1 & RxIPF) ? 0 : kChecksumIP;
+        }
+        setChecksumResult(newPkt, kChecksumFamilyTCPIP, resultMask, validMask);
+        
+        /* Also get the VLAN tag if there is any. */
+        if (vlanTag)
+            setVlanTag(newPkt, vlanTag);
+        
+        netif->inputPacket(newPkt, pktSize, IONetworkInterface::kInputOptionQueuePacket);
+        goodPkt = true;
+        
+        /* Finally update the descriptor and get the next one to examine. */
+    nextDesc:
+        if (addr)
+            desc->addr = OSSwapHostToLittleInt64(addr);
+        
+        desc->opts2 = OSSwapHostToLittleInt32(opts2);
+        desc->opts1 = OSSwapHostToLittleInt32(opts1);
+        
+        ++rxNextDescIndex &= kRxDescMask;
+        desc = &rxDescArray[rxNextDescIndex];
+    }
+    if (goodPkt)
+        netif->flushInputQueue();
+}
 
+void RTL8111::rxInterruptC()
+{
+    IOPhysicalSegment rxSegment;
+    RtlDmaDesc *desc = &rxDescArray[rxNextDescIndex];
+    mbuf_t bufPkt, newPkt;
+    UInt64 addr;
+    UInt32 opts1, opts2;
+    UInt32 descStatus1, descStatus2;
+    UInt32 pktSize, pktType;
+    UInt32 resultMask, validMask;
+    UInt16 vlanTag;
+    bool replaced;
+    bool goodPkt = false;
+    
+    while (!((descStatus1 = OSSwapLittleToHostInt32(desc->opts1)) & DescOwn)) {
+        opts1 = (rxNextDescIndex == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
+        opts2 = 0;
+        addr = 0;
+        
+        /* As we don't support jumbo frames we consider fragmented packets as errors. */
+        if ((descStatus1 & (FirstFrag|LastFrag)) != (FirstFrag|LastFrag)) {
+            DebugLog("Ethernet [RealtekRTL8111]: Fragmented packet.\n");
+            netStats->inputErrors++;
+            opts1 |= kRxBufferPktSize;
+            goto nextDesc;
+        }
+        
+        descStatus2 = OSSwapLittleToHostInt32(desc->opts2);
+        pktSize = (descStatus1 & 0x1fff) - 4;
+        bufPkt = rxMbufArray[rxNextDescIndex];
+        vlanTag = (descStatus2 & RxVlanTag) ? OSSwapInt16(descStatus2 & 0xffff) : 0;
+        pktType = descStatus1 & RxProtoMask;
+        
+        //DebugLog("rxInterrupt(): descStatus1=0x%x, descStatus2=0x%x, pktSize=%u\n", descStatus1, descStatus2, pktSize);
+        
+        newPkt = replaceOrCopyPacket(&bufPkt, pktSize, &replaced);
+        
+        if (!newPkt) {
+            /* Allocation of a new packet failed so that we must leave the original packet in place. */
+            DebugLog("Ethernet [RealtekRTL8111]: replaceOrCopyPacket() failed.\n");
+            netStats->inputErrors++;
+            opts1 |= kRxBufferPktSize;
+            goto nextDesc;
+        }
+        
+        /* If the packet was replaced we have to update the descriptor's buffer address. */
+        if (replaced) {
+            if (rxMbufCursor->getPhysicalSegmentsWithCoalesce(bufPkt, &rxSegment, 1) != 1) {
+                DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed.\n");
+                freePacket(bufPkt);
+                netStats->inputErrors++;
+                opts1 |= kRxBufferPktSize;
+                goto nextDesc;
+            }
+            opts1 |= ((UInt32)rxSegment.length & 0x0000ffff);
+            addr = rxSegment.location;
+            rxMbufArray[rxNextDescIndex] = bufPkt;
+        } else {
+            opts1 |= kRxBufferPktSize;
+        }
+        resultMask = validMask = 0;
+        
         /* Get the result of the checksum calculation and store it in the packet. */
         if (pktType == RxTCPT) {
             /* TCP packet */
@@ -1381,22 +1614,22 @@ void RTL8111::rxInterrupt()
             validMask = (descStatus1 & RxIPF) ? 0 : kChecksumIP;
         }
         setChecksumResult(newPkt, kChecksumFamilyTCPIP, resultMask, validMask);
-
+        
         /* Also get the VLAN tag if there is any. */
         if (vlanTag)
             setVlanTag(newPkt, vlanTag);
-
+        
         netif->inputPacket(newPkt, pktSize, IONetworkInterface::kInputOptionQueuePacket);
         goodPkt = true;
-
+        
         /* Finally update the descriptor and get the next one to examine. */
-nextDesc:
+    nextDesc:
         if (addr)
             desc->addr = OSSwapHostToLittleInt64(addr);
-
+        
         desc->opts2 = OSSwapHostToLittleInt32(opts2);
         desc->opts1 = OSSwapHostToLittleInt32(opts1);
-
+        
         ++rxNextDescIndex &= kRxDescMask;
         desc = &rxDescArray[rxNextDescIndex];
     }
@@ -1605,7 +1838,7 @@ void RTL8111::checkLinkStatus()
 	}
 }
 
-void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count)
+void RTL8111::interruptOccurredB(OSObject *client, IOInterruptEventSource *src, int count)
 {
 	UInt16 status;
     
@@ -1615,13 +1848,13 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     /* hotplug/major error/no more work/shared irq */
     if ((status == 0xFFFF) || !status)
         goto done;
-
+    
     if (status & SYSErr)
         pciErrorInterrupt();
-
+    
     /* Rx interrupt */
     if (status & (RxOK | RxDescUnavail | RxFIFOOver))
-        rxInterrupt();
+        rxInterruptB();
     
     /* Tx interrupt */
     if (status & (TxOK | TxErr | TxDescUnavail))
@@ -1633,7 +1866,41 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     /* Check if a statistics dump has been completed. */
     if (needsUpdate && !(ReadReg32(CounterAddrLow) & CounterDump))
         updateStatitics();
-        
+    
+done:
+    WriteReg16(IntrStatus, 0xffff);
+	WriteReg16(IntrMask, linuxData.intr_mask);
+}
+
+void RTL8111::interruptOccurredC(OSObject *client, IOInterruptEventSource *src, int count)
+{
+	UInt16 status;
+    
+	WriteReg16(IntrMask, 0x0000);
+    status = ReadReg16(IntrStatus);
+    
+    /* hotplug/major error/no more work/shared irq */
+    if ((status == 0xFFFF) || !status)
+        goto done;
+    
+    if (status & SYSErr)
+        pciErrorInterrupt();
+    
+    /* Rx interrupt */
+    if (status & (RxOK | RxDescUnavail | RxFIFOOver))
+        rxInterruptC();
+    
+    /* Tx interrupt */
+    if (status & (TxOK | TxErr | TxDescUnavail))
+        txInterrupt();
+    
+    if (status & LinkChg)
+        checkLinkStatus();
+    
+    /* Check if a statistics dump has been completed. */
+    if (needsUpdate && !(ReadReg32(CounterAddrLow) & CounterDump))
+        updateStatitics();
+    
 done:
     WriteReg16(IntrStatus, 0xffff);
 	WriteReg16(IntrMask, linuxData.intr_mask);
@@ -1779,11 +2046,9 @@ bool RTL8111::initRTL8111()
     /* Assume original RTL-8168 in case of unkown chipset. */
     tp->chipset = (tp->mcfg <= CFG_METHOD_24) ? tp->mcfg : CFG_METHOD_1;
     
-    /* As of now the driver doesn't support RTL8168B/8111B. */
-    if ((tp->chipset == CFG_METHOD_1) || (tp->chipset == CFG_METHOD_2) || (tp->chipset == CFG_METHOD_3)) {
-        IOLog("[RTL8111] RTL8168B/8111B currently unsupported. Aborting!");
-        goto done;
-    }
+    /* Select the chip revision. */
+    revisionC = ((tp->chipset == CFG_METHOD_1) || (tp->chipset == CFG_METHOD_2) || (tp->chipset == CFG_METHOD_3)) ? false : true;
+
 	tp->set_speed = rtl8168_set_speed_xmii;
 	tp->get_settings = rtl8168_gset_xmii;
 	tp->phy_reset_enable = rtl8168_xmii_reset_enable;
@@ -1894,7 +2159,12 @@ void RTL8111::restartRTL8111()
     /* Reset NIC and cleanup both descriptor rings. */
     rtl8168_nic_reset(&linuxData);
     txClearDescriptors(true);
-    rxInterrupt();
+    
+    if (revisionC)
+        rxInterruptC();
+    else
+        rxInterruptB();
+
     rxNextDescIndex = 0;
     deadlockWarn = 0;
     
@@ -2850,19 +3120,7 @@ void RTL8111::startRTL8111()
         //dev->features &= ~NETIF_F_IP_CSUM;
         //rtl8168_set_rxbufsize(tp, dev);
     }
-    
-    if ((tp->mcfg == CFG_METHOD_1) || (tp->mcfg == CFG_METHOD_2) || (tp->mcfg == CFG_METHOD_3)) {
-        /* csum offload command for RTL8168B/8111B */
-        tp->tx_tcp_csum_cmd = TxIPCS | TxTCPCS;
-        tp->tx_udp_csum_cmd = TxIPCS | TxUDPCS;
-        tp->tx_ip_csum_cmd = TxIPCS;
-    } else {
-        /* csum offload command for RTL8168C/8111C and RTL8168CP/8111CP */
-        tp->tx_tcp_csum_cmd = TxIPCS_C | TxTCPCS_C;
-        tp->tx_udp_csum_cmd = TxIPCS_C | TxUDPCS_C;
-        tp->tx_ip_csum_cmd = TxIPCS_C;
-    }
-    
+        
     tp->cp_cmd |= (RxChkSum|RxVlan|PCIDAC);
 	WriteReg16(CPlusCmd, tp->cp_cmd);
 	ReadReg16(CPlusCmd);

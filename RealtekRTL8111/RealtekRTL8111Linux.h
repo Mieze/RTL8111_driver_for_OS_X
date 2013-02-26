@@ -1232,9 +1232,9 @@ struct rtl8168_private {
 	//spinlock_t lock;		/* spin lock flag */
 	//spinlock_t phy_lock;		/* spin lock flag for GPHY */
 	//u32 msg_enable;
-	u32 tx_tcp_csum_cmd;
-	u32 tx_udp_csum_cmd;
-	u32 tx_ip_csum_cmd;
+	//u32 tx_tcp_csum_cmd;
+	//u32 tx_udp_csum_cmd;
+	//u32 tx_ip_csum_cmd;
 	int max_jumbo_frame_size;
 	int chipset;
 	u32 mcfg;

@@ -178,11 +178,13 @@ private:
     static IOReturn setPowerStateSleepAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
     bool setupMediumDict();
     bool initEventSources(IOService *provider);
-    void interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
+    void interruptOccurredB(OSObject *client, IOInterruptEventSource *src, int count);
+    void interruptOccurredC(OSObject *client, IOInterruptEventSource *src, int count);
     void timerAction(IOTimerEventSource *timer);
     void pciErrorInterrupt();
     void txInterrupt();
-    void rxInterrupt();
+    void rxInterruptB();
+    void rxInterruptC();
     bool setupDMADescriptors();
     void freeDMADescriptors();
     void txClearDescriptors(bool withReset);
@@ -197,6 +199,10 @@ private:
     void setOffset79(UInt8 setting);
     void restartRTL8111();
     
+    /* outputPacket methods */
+    UInt32 outputPacketB(mbuf_t m, void *param);
+    UInt32 outputPacketC(mbuf_t m, void *param);
+
 private:
 	IOWorkLoop *workLoop;
     IOCommandGate *commandGate;
@@ -267,4 +273,5 @@ private:
     bool needsUpdate;
     bool wolCapable;
     bool wolActive;
+    bool revisionC;
 };
