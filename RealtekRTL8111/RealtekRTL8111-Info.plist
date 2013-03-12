@@ -32,6 +32,8 @@
 			<string>RTL8111</string>
 			<key>Vendor</key>
 			<string>Realtek</string>
+			<key>enableEEE</key>
+			<true/>
 			<key>IOClass</key>
 			<string>RTL8111</string>
 			<key>IOPCIMatch</key>

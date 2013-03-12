@@ -276,13 +276,10 @@ enum
 
 #define WARN_ON_ONCE(x)
 
-
 #define net_device rtl8168_private
 #define netdev_priv(x)  ((struct rtl8168_private *)x)
 
 #define DISABLED_CODE 0
-
-#define eee_enable  tp->eeeEnable
 
 struct pci_dev {
     UInt16 vendor;

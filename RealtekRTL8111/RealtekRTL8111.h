@@ -97,14 +97,14 @@ typedef struct RtlStatData {
 
 /* This is the receive buffer size (must be large enough to hold a packet). */
 #define kRxBufferPktSize    2000
-#define kRxNumSpareMbufs    50
+#define kRxNumSpareMbufs    100
 #define kMCFilterLimit  32
 
 /* statitics timer period in ms. */
 #define kTimeoutMS 1000
 
 /* transmitter deadlock treshhold in seconds. */
-#define kTxDeadlockTreshhold 3
+#define kTxDeadlockTreshhold 2
 
 /* This definition should have been in IOPCIDevice.h. */
 enum
@@ -114,10 +114,27 @@ enum
 
 enum
 {
+    kIOPCIELinkCapability = 12,
+    kIOPCIELinkControl = 16,
+};
+
+enum
+{
+    kIOPCIELinkCtlASPM = 0x0003,    /* ASPM Control */
+    kIOPCIELinkCtlL0s = 0x0001,     /* L0s Enable */
+    kIOPCIELinkCtlL1 = 0x0002,      /* L1 Enable */
+    kIOPCIELinkCtlCcc = 0x0040,     /* Common Clock Configuration */
+    kIOPCIELinkCtlClkReqEn = 0x100, /* Enable clkreq */
+};
+
+enum
+{
     kPowerStateOff = 0,
     kPowerStateOn,
     kPowerStateCount
 };
+
+#define kEnableEeeName "enableEEE"
 
 extern const struct RTLChipInfo rtl_chip_info[];
 
@@ -178,19 +195,20 @@ private:
     static IOReturn setPowerStateSleepAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
     bool setupMediumDict();
     bool initEventSources(IOService *provider);
-    void interruptOccurredB(OSObject *client, IOInterruptEventSource *src, int count);
-    void interruptOccurredC(OSObject *client, IOInterruptEventSource *src, int count);
-    void timerAction(IOTimerEventSource *timer);
+    void interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
     void pciErrorInterrupt();
     void txInterrupt();
-    void rxInterruptB();
-    void rxInterruptC();
+    void rxInterrupt();
     bool setupDMADescriptors();
     void freeDMADescriptors();
     void txClearDescriptors(bool withReset);
     void checkLinkStatus();
     void updateStatitics();
-    
+    void setLinkUp(UInt8 linkState);
+    void setLinkDown();
+    bool checkForDeadlock();
+    void dumpTallyCounter();
+
     /* Hardware initialization methods. */
     bool initRTL8111();
     void enableRTL8111();
@@ -198,10 +216,16 @@ private:
     void startRTL8111();
     void setOffset79(UInt8 setting);
     void restartRTL8111();
-    
-    /* outputPacket methods */
-    UInt32 outputPacketB(mbuf_t m, void *param);
-    UInt32 outputPacketC(mbuf_t m, void *param);
+        
+    /* Hardware specific methods */
+    void getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
+    void getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2);
+
+    /* RTL8111C specific methods */
+    void timerActionRTL8111C(IOTimerEventSource *timer);
+
+    /* RTL8111B/8168B specific methods */
+    void timerActionRTL8111B(IOTimerEventSource *timer);
 
 private:
 	IOWorkLoop *workLoop;

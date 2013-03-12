@@ -293,9 +293,9 @@ static int duplex = DUPLEX_FULL;
 static int autoneg = AUTONEG_ENABLE;
 
 #ifdef CONFIG_ASPM
-static int aspm = 1;
+//static int aspm = 1;
 #else
-static int aspm = 0;
+//static int aspm = 0;
 #endif
 
 MODULE_AUTHOR("Realtek and the Linux r8168 crew <netdev@vger.kernel.org>");
@@ -13663,7 +13663,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
 
 	spin_unlock_irqrestore(&tp->phy_lock, flags);
 
-	if (eee_enable == 1)
+	if (tp->eeeEnable == 1)
 		rtl8168_enable_EEE(tp);
 	else
 		rtl8168_disable_EEE(tp);
