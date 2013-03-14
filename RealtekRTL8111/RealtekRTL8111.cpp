@@ -367,8 +367,10 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     isEnabled = true;
     stalled = false;
 
+#ifdef DEBUG
     if (!revisionC)
         timerSource->setTimeoutMS(kTimeoutMS);
+#endif
     
     result = kIOReturnSuccess;
     
@@ -455,6 +457,7 @@ UInt32 RTL8111::outputPacket(mbuf_t m, void *param)
     
     if (!numSegs) {
         DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed. Dropping packet.\n");
+        etherStats->dot3TxExtraEntry.resourceErrors++;
         goto error2;
     }
     /* Alloc required number of descriptors. As the descriptor which has been freed last must be
@@ -992,12 +995,16 @@ bool RTL8111::initEventSources(IOService *provider)
      */
     if (!useMSI)
         interruptSource->enable();
-    
+
+#ifdef DEBUG
     if (revisionC)
         timerSource = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &RTL8111::timerActionRTL8111C));
     else
         timerSource = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &RTL8111::timerActionRTL8111B));
-        
+#else
+    timerSource = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &RTL8111::timerActionRTL8111C));
+#endif
+    
     if (!timerSource) {
         IOLog("Ethernet [RealtekRTL8111]: Failed to create IOTimerEventSource.\n");
         goto error2;
@@ -1349,6 +1356,7 @@ void RTL8111::rxInterrupt()
         if (replaced) {
             if (rxMbufCursor->getPhysicalSegmentsWithCoalesce(bufPkt, &rxSegment, 1) != 1) {
                 DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed.\n");
+                etherStats->dot3RxExtraEntry.resourceErrors++;
                 freePacket(bufPkt);
                 netStats->inputErrors++;
                 opts1 |= kRxBufferPktSize;
@@ -1585,6 +1593,8 @@ void RTL8111::dumpTallyCounter()
 
 #pragma mark --- hardware specific methods ---
 
+#ifdef DEBUG
+
 void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags)
 {
     if (revisionC) {
@@ -1593,9 +1603,9 @@ void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt3
             *cmd1 = LargeSend;
 /*
         } else if (tsoFlags == MBUF_TSO_IPV6) {
-            DebugLog("Ethernet [RealtekRTL8111]: TSOv6: mss=%u\n", mssValue);
-            *cmd2 |= ((mssValue & MSSMask) << MSSShift_C);
-            *cmd1 = LargeSend;
+             DebugLog("Ethernet [RealtekRTL8111]: TSOv6: mss=%u\n", mssValue);
+             *cmd2 |= ((mssValue & MSSMask) << MSSShift_C);
+             *cmd1 = LargeSend;
 */
         } else {
             if (checksums & kChecksumTCP)
@@ -1628,6 +1638,37 @@ void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt3
         }
     }
 }
+
+#else   /* The release build doesn't include support for RTL8111B/8168B. */
+
+void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags)
+{
+    if (tsoFlags & MBUF_TSO_IPV4) {
+        *cmd2 |= (((mssValue & MSSMask) << MSSShift_C) | TxIPCS_C);
+        *cmd1 = LargeSend;
+/*
+    } else if (tsoFlags == MBUF_TSO_IPV6) {
+         DebugLog("Ethernet [RealtekRTL8111]: TSOv6: mss=%u\n", mssValue);
+         *cmd2 |= ((mssValue & MSSMask) << MSSShift_C);
+         *cmd1 = LargeSend;
+*/
+    } else {
+        if (checksums & kChecksumTCP)
+            *cmd2 |= (TxIPCS_C | TxTCPCS_C);
+        else if (checksums & kChecksumTCPIPv6)
+            *cmd2 |= TxTCPCS_C;
+        else if (checksums & kChecksumUDP)
+            *cmd2 |= (TxIPCS_C | TxUDPCS_C);
+        else if (checksums & kChecksumUDPIPv6)
+            *cmd2 |= TxUDPCS_C;
+        else if (checksums & kChecksumIP)
+            *cmd2 |= TxIPCS_C;
+    }
+}
+
+#endif
+
+#ifdef DEBUG
 
 void RTL8111::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
 {
@@ -1677,6 +1718,43 @@ void RTL8111::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
     }
     setChecksumResult(m, kChecksumFamilyTCPIP, resultMask, validMask);
 }
+
+#else   /* The release build doesn't include support for RTL8111B/8168B. */
+
+void RTL8111::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
+{
+    UInt32 resultMask = 0;
+    UInt32 validMask = 0;
+    UInt32 pktType = (status1 & RxProtoMask);
+    
+    /* Get the result of the checksum calculation and store it in the packet. */
+    if (pktType == RxTCPT) {
+        /* TCP packet */
+        if (status2 & RxV4F) {
+            resultMask = (kChecksumTCP | kChecksumIP);
+            validMask = (status1 & RxTCPF) ? 0 : (kChecksumTCP | kChecksumIP);
+        } else {
+            resultMask = kChecksumTCP;
+            validMask = (status1 & RxTCPF) ? 0 : kChecksumTCP;
+        }
+    } else if (pktType == RxUDPT) {
+        /* UDP packet */
+        if (status2 & RxV4F) {
+            resultMask = (kChecksumUDP | kChecksumIP);
+            validMask = (status1 & RxUDPF) ? 0 : (kChecksumUDP | kChecksumIP);
+        } else {
+            resultMask = kChecksumUDP;
+            validMask = (status1 & RxUDPF) ? 0 : kChecksumUDP;
+        }
+    } else if ((pktType == 0) && (status2 & RxV4F)) {
+        /* IP packet */
+        resultMask = kChecksumIP;
+        validMask = (status1 & RxIPF) ? 0 : kChecksumIP;
+    }
+    setChecksumResult(m, kChecksumFamilyTCPIP, resultMask, validMask);
+}
+
+#endif
 
 static const char *speed1GName = "1-Gigabit";
 static const char *speed100MName = "100-Megabit";
@@ -1866,9 +1944,16 @@ bool RTL8111::initRTL8111()
     /* Assume original RTL-8168 in case of unkown chipset. */
     tp->chipset = (tp->mcfg <= CFG_METHOD_24) ? tp->mcfg : CFG_METHOD_1;
     
+#ifdef DEBUG
     /* Select the chip revision. */
     revisionC = ((tp->chipset == CFG_METHOD_1) || (tp->chipset == CFG_METHOD_2) || (tp->chipset == CFG_METHOD_3)) ? false : true;
-
+#else   /* The release build doesn't include support for RTL8111B/8168B. */
+    if ((tp->chipset == CFG_METHOD_1) || (tp->chipset == CFG_METHOD_2) || (tp->chipset == CFG_METHOD_3)) {
+        IOLog("Ethernet [RealtekRTL8111]: RTL8168B/8111B currently unsupported. Aborting!");
+        goto done;
+    }
+#endif
+    
 	tp->set_speed = rtl8168_set_speed_xmii;
 	tp->get_settings = rtl8168_gset_xmii;
 	tp->phy_reset_enable = rtl8168_xmii_reset_enable;
@@ -1916,8 +2001,13 @@ bool RTL8111::initRTL8111()
     
     tp->cp_cmd = ReadReg16(CPlusCmd);
     tp->max_jumbo_frame_size = rtl_chip_info[tp->chipset].jumbo_frame_sz;
+    
+#ifdef DEBUG
     intrMask = (revisionC) ? (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK) : (SYSErr | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
-
+#else
+    intrMask = (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
+#endif
+    
     /* Get the RxConfig parameters. */
     rxConfigReg = rtl_chip_info[tp->chipset].RCR_Cfg;
     rxConfigMask = rtl_chip_info[tp->chipset].RxConfigMask;
@@ -3020,6 +3110,7 @@ void RTL8111::timerActionRTL8111C(IOTimerEventSource *timer)
     if (checkForDeadlock())
         goto done;
     
+    dumpTallyCounter();
     timerSource->setTimeoutMS(kTimeoutMS);
     
     /* We can savely free the mbuf here because the timer action gets called
@@ -3038,6 +3129,7 @@ done:
 
 #pragma mark --- RTL8111B/8168B specific methods ---
 
+#ifdef DEBUG
 void RTL8111::timerActionRTL8111B(IOTimerEventSource *timer)
 {
 	UInt8 currLinkState;
@@ -3077,6 +3169,7 @@ done:
     
     DebugLog("timerActionRTL8111B() <===\n");
 }
+#endif
 
 #pragma mark --- miscellaneous functions ---
 
