@@ -565,6 +565,7 @@ const OSString* RTL8111::newModelString() const
 
 bool RTL8111::configureInterface(IONetworkInterface *interface)
 {
+    char modelName[kNameLenght];
     IONetworkData *data;
     bool result;
 
@@ -600,6 +601,8 @@ bool RTL8111::configureInterface(IONetworkInterface *interface)
         }
     }
     unitNumber = interface->getUnitNumber();
+    snprintf(modelName, kNameLenght, "Realtek %s PCI Express Gigabit Ethernet", rtl_chip_info[linuxData.chipset].name);
+    setProperty("model", modelName);
     
     DebugLog("configureInterface() <===\n");
 
