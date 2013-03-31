@@ -1409,7 +1409,7 @@ unsigned int
 rtl8168_xmii_reset_pending(struct net_device *dev)
 {
 	struct rtl8168_private *tp = netdev_priv(dev);
-	unsigned long flags;
+	//unsigned long flags;
 	unsigned int retval;
 
 	spin_lock_irqsave(&tp->phy_lock, flags);
@@ -1436,7 +1436,7 @@ void
 rtl8168_xmii_reset_enable(struct net_device *dev)
 {
 	struct rtl8168_private *tp = netdev_priv(dev);
-	unsigned long flags;
+	//unsigned long flags;
 	int i, val = 0;
 
 	spin_lock_irqsave(&tp->phy_lock, flags);
@@ -1462,7 +1462,7 @@ rtl8168dp_10mbps_gphy_para(struct net_device *dev)
 	struct rtl8168_private *tp = netdev_priv(dev);
 	void __iomem *ioaddr = tp->mmio_addr;
 	u8 status = RTL_R8(PHYstatus);
-	unsigned long flags;
+	//unsigned long flags;
 
 	spin_lock_irqsave(&tp->phy_lock, flags);
 	if ((status & LinkStatus) && (status & _10bps)) {
@@ -1608,7 +1608,7 @@ rtl8168_powerdown_pll(struct net_device *dev)
 {
 	struct rtl8168_private *tp = netdev_priv(dev);
 	void __iomem *ioaddr = tp->mmio_addr;
-	unsigned long flags;
+	//unsigned long flags;
 	int auto_nego = 0;
 	int giga_ctrl = 0;
 	u32 csi_tmp;
@@ -1879,7 +1879,7 @@ rtl8168_set_speed_xmii(struct net_device *dev,
 	int auto_nego = 0;
 	int giga_ctrl = 0;
 	int bmcr_true_force = 0;
-	unsigned long flags;
+	//unsigned long flags;
 
 	if ((speed != SPEED_1000) &&
 	    (speed != SPEED_100) &&
@@ -2208,7 +2208,7 @@ void rtl8168_gset_xmii(struct net_device *dev,
 	struct rtl8168_private *tp = netdev_priv(dev);
 	void __iomem *ioaddr = tp->mmio_addr;
 	u8 status;
-	unsigned long flags;
+	//unsigned long flags;
 
 	cmd->supported = SUPPORTED_10baseT_Half |
 			 SUPPORTED_10baseT_Full |
@@ -2584,7 +2584,7 @@ static int rtl8168_enable_EEE(struct rtl8168_private *tp)
 {
 	void __iomem *ioaddr = tp->mmio_addr;
 	int	ret;
-	unsigned long flags;
+	//unsigned long flags;
 	u16	data;
 
 	ret = 0;
@@ -2698,7 +2698,7 @@ static int rtl8168_disable_EEE(struct rtl8168_private *tp)
 {
 	void __iomem *ioaddr = tp->mmio_addr;
 	int	ret;
-	unsigned long flags;
+	//unsigned long flags;
 	u16	data;
 
 	ret = 0;
@@ -3101,7 +3101,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
 {
 	struct rtl8168_private *tp = netdev_priv(dev);
 	void __iomem *ioaddr = tp->mmio_addr;
-	unsigned long flags;
+	//unsigned long flags;
 	unsigned int gphy_val,i;
 	u32 csi_tmp;	
 
@@ -14541,7 +14541,7 @@ void
 rtl8168_phy_power_up (struct net_device *dev)
 {
 	struct rtl8168_private *tp = netdev_priv(dev);
-	unsigned long flags;	
+	//unsigned long flags;
 
 	spin_lock_irqsave(&tp->phy_lock, flags);
 	mdio_write(tp, 0x1F, 0x0000);
@@ -14572,7 +14572,7 @@ static void
 rtl8168_phy_power_down (struct net_device *dev)
 {
 	struct rtl8168_private *tp = netdev_priv(dev);
-	unsigned long flags;	
+	//unsigned long flags;
 
 	spin_lock_irqsave(&tp->phy_lock, flags);
 	mdio_write(tp, 0x1F, 0x0000);
@@ -17420,7 +17420,7 @@ void rtl8168_sleep_rx_enable(struct net_device *dev)
 		RTL_W32(RxConfig, RTL_R32(RxConfig) | AcceptBroadcast | AcceptMulticast | AcceptMyPhys);
 	} else if (tp->mcfg == CFG_METHOD_18 || tp->mcfg == CFG_METHOD_19) {
 		if (RTL_R8(0x8c) & BIT_28) {
-			unsigned long flags;
+			//unsigned long flags;
 			u32 gphy_val;
 
 			spin_lock_irqsave(&tp->phy_lock, flags);
