@@ -730,15 +730,22 @@ IOReturn RTL8111::setMulticastList(IOEthernetAddress *addrs, UInt32 count)
 IOReturn RTL8111::getChecksumSupport(UInt32 *checksumMask, UInt32 checksumFamily, bool isOutput)
 {
     IOReturn result = kIOReturnUnsupported;
-    
+
+    DebugLog("getChecksumSupport() ===>\n");
+
     if ((checksumFamily == kChecksumFamilyTCPIP) && checksumMask) {
         if (isOutput)
-            *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP | kChecksumTCPIPv6 | kChecksumUDPIPv6);
-        else
             *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP);
-
+        else
+#ifdef DEBUG
+            *checksumMask = (revisionC) ? (kChecksumTCP | kChecksumUDP | kChecksumIP | kChecksumTCPIPv6 | kChecksumUDPIPv6) : (kChecksumTCP | kChecksumUDP | kChecksumIP);
+#else
+            *checksumMask = (kChecksumTCP | kChecksumUDP | kChecksumIP | kChecksumTCPIPv6 | kChecksumUDPIPv6);
+#endif
         result = kIOReturnSuccess;
     }
+    DebugLog("getChecksumSupport() <===\n");
+
     return result;
 }
 
@@ -810,7 +817,7 @@ UInt32 RTL8111::getFeatures() const
     DebugLog("getFeatures() ===>\n");
     DebugLog("getFeatures() <===\n");
 
-    return (kIONetworkFeatureMultiPages | kIONetworkFeatureHardwareVlan | kIONetworkFeatureTSOIPv4 /*| kIONetworkFeatureTSOIPv6*/);
+    return (kIONetworkFeatureMultiPages | kIONetworkFeatureHardwareVlan | kIONetworkFeatureTSOIPv4);
 }
 
 IOReturn RTL8111::setHardwareAddress(const IOEthernetAddress *addr)
@@ -1603,21 +1610,11 @@ void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt3
         if (tsoFlags & MBUF_TSO_IPV4) {
             *cmd2 |= (((mssValue & MSSMask) << MSSShift_C) | TxIPCS_C);
             *cmd1 = LargeSend;
-/*
-        } else if (tsoFlags == MBUF_TSO_IPV6) {
-             DebugLog("Ethernet [RealtekRTL8111]: TSOv6: mss=%u\n", mssValue);
-             *cmd2 |= ((mssValue & MSSMask) << MSSShift_C);
-             *cmd1 = LargeSend;
-*/
         } else {
             if (checksums & kChecksumTCP)
                 *cmd2 |= (TxIPCS_C | TxTCPCS_C);
-            else if (checksums & kChecksumTCPIPv6)
-                *cmd2 |= TxTCPCS_C;
             else if (checksums & kChecksumUDP)
                 *cmd2 |= (TxIPCS_C | TxUDPCS_C);
-            else if (checksums & kChecksumUDPIPv6)
-                *cmd2 |= TxUDPCS_C;
             else if (checksums & kChecksumIP)
                 *cmd2 |= TxIPCS_C;
         }
@@ -1629,12 +1626,8 @@ void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt3
             /* Setup the checksum command bits. */
             if (checksums & kChecksumTCP)
                 *cmd1 = (TxIPCS | TxTCPCS);
-            if (checksums & kChecksumTCPIPv6)
-                *cmd1 = TxTCPCS;
             else if (checksums & kChecksumUDP)
                 *cmd1 = (TxIPCS | TxUDPCS);
-            else if (checksums & kChecksumUDPIPv6)
-                *cmd1 = TxUDPCS;
             else if (checksums & kChecksumIP)
                 *cmd1 = TxIPCS;
         }
@@ -1648,21 +1641,11 @@ void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt3
     if (tsoFlags & MBUF_TSO_IPV4) {
         *cmd2 |= (((mssValue & MSSMask) << MSSShift_C) | TxIPCS_C);
         *cmd1 = LargeSend;
-/*
-    } else if (tsoFlags == MBUF_TSO_IPV6) {
-         DebugLog("Ethernet [RealtekRTL8111]: TSOv6: mss=%u\n", mssValue);
-         *cmd2 |= ((mssValue & MSSMask) << MSSShift_C);
-         *cmd1 = LargeSend;
-*/
     } else {
         if (checksums & kChecksumTCP)
             *cmd2 |= (TxIPCS_C | TxTCPCS_C);
-        else if (checksums & kChecksumTCPIPv6)
-            *cmd2 |= TxTCPCS_C;
         else if (checksums & kChecksumUDP)
             *cmd2 |= (TxIPCS_C | TxUDPCS_C);
-        else if (checksums & kChecksumUDPIPv6)
-            *cmd2 |= TxUDPCS_C;
         else if (checksums & kChecksumIP)
             *cmd2 |= TxIPCS_C;
     }
@@ -1685,18 +1668,18 @@ void RTL8111::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
             if (status2 & RxV4F) {
                 resultMask = (kChecksumTCP | kChecksumIP);
                 validMask = (status1 & RxTCPF) ? 0 : (kChecksumTCP | kChecksumIP);
-            } else {
-                resultMask = kChecksumTCP;
-                validMask = (status1 & RxTCPF) ? 0 : kChecksumTCP;
+            } else if (status2 & RxV6F) {
+                resultMask = kChecksumTCPIPv6;
+                validMask = (status1 & RxTCPF) ? 0 : kChecksumTCPIPv6;
             }
         } else if (pktType == RxUDPT) {
             /* UDP packet */
             if (status2 & RxV4F) {
                 resultMask = (kChecksumUDP | kChecksumIP);
                 validMask = (status1 & RxUDPF) ? 0 : (kChecksumUDP | kChecksumIP);
-            } else {
-                resultMask = kChecksumUDP;
-                validMask = (status1 & RxUDPF) ? 0 : kChecksumUDP;
+            } else if (status2 & RxV6F) {
+                resultMask = kChecksumUDPIPv6;
+                validMask = (status1 & RxUDPF) ? 0 : kChecksumUDPIPv6;
             }
         } else if ((pktType == 0) && (status2 & RxV4F)) {
             /* IP packet */
@@ -1737,14 +1720,14 @@ void RTL8111::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
         /* TCP packet */
         if (status2 & RxV4F)
             resultMask = (status1 & RxTCPF) ? 0 : (kChecksumTCP | kChecksumIP);
-        else
-            resultMask = (status1 & RxTCPF) ? 0 : kChecksumTCP;
+        else if (status2 & RxV6F)
+            resultMask = (status1 & RxTCPF) ? 0 : kChecksumTCPIPv6;
     } else if (pktType == RxUDPT) {
         /* UDP packet */
         if (status2 & RxV4F)
             resultMask = (status1 & RxUDPF) ? 0 : (kChecksumUDP | kChecksumIP);
-        else
-            resultMask = (status1 & RxUDPF) ? 0 : kChecksumUDP;
+        else if (status2 & RxV6F)
+            resultMask = (status1 & RxUDPF) ? 0 : kChecksumUDPIPv6;
     } else if ((pktType == 0) && (status2 & RxV4F)) {
         /* IP packet */
         resultMask = (status1 & RxIPF) ? 0 : kChecksumIP;
