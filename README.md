@@ -19,7 +19,7 @@ TCP, UDP and IPv4 checksum offload (receive and transmit).
 - The driver is published under GPLv2.
 
 Limitations
-- Support for the Realtek RTL8111B/8168B is still experimental and might not work at all. Therefore it is only included in debug builds and has never been tested successfully because I don't have access to a board with one of these outdated chips.
+- Support for the Realtek RTL8111B/8168B is still experimental. Therefore it is only included in debug builds and has never been tested successfully because I don't have access to a board with one of these outdated chips.
 - As checksum offload doesn't work with jumbo frames they are currently unsupported and will probably never be.
 - No support for 32bit kernels.
 
@@ -45,7 +45,7 @@ Before you install the driver you have to remove any installed driver for RTL811
 
 Current status
 
-The driver has been successfully tested under 10.8.2 and 10.8.3 with the D (chipset 9), E (chipset 16) and F (chipset 17) versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are 25 different revisions of the RTL8111.
+The driver has been successfully tested under 10.8.2 and 10.8.3 with the D (chipset 9), E (chipset 16) and F (chipset 17) versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are 25 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
 
 Changelog
 - Version 1.0.1 (2013-03-31):
@@ -53,9 +53,10 @@ Changelog
     - Adds the chipset's model name to IORegistry so that it will show up in System Profiler.
 - Version 1.0.2 (2013-04-22):
     - Added support for rx checksum offload of TCP and UDP over IPv6.
-    
+- Version 1.0.3 (2013-04-25):
+    - The issue after a reboot from Windows has been eliminated.
+
 Known Issues
-- The code for RTL8111B/8168B NICs is untested and will probably not work as expected.
 - Eventually you might find a "Ethernet [RealtekRTL8111]: replaceOrCopyPacket() failed." message in the log file. This is nothing to worry about and means that a single packet has been dropped because the driver failed to allocate a new packet buffer. Packet buffers are allocated from a buffer pool which is dynamically sized by the network stack. When the pool is exhausted the OS increases it's size making the error a self-healing issue.
 
 Building from Source
