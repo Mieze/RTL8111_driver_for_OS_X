@@ -3020,7 +3020,9 @@ void RTL8111::startRTL8111()
      if (tp->mcfg == CFG_METHOD_11 || tp->mcfg == CFG_METHOD_12)
      rtl8168_mac_loopback_test(tp);
      */
-    /* Set Rx Config register */
+    /* Set RxMaxSize register */
+    WriteReg16(RxMaxSize, kRxBufferPktSize);
+    
     //rtl8168_set_rx_mode();
     setMulticastMode(multicastMode);
     
