@@ -225,10 +225,8 @@ private:
     /* RTL8111C specific methods */
     void timerActionRTL8111C(IOTimerEventSource *timer);
 
-#ifdef DEBUG   /* The release build doesn't include support for RTL8111B/8168B. */
     /* RTL8111B/8168B specific methods */
     void timerActionRTL8111B(IOTimerEventSource *timer);
-#endif
     
 private:
 	IOWorkLoop *workLoop;
@@ -302,8 +300,5 @@ private:
     bool needsUpdate;
     bool wolCapable;
     bool wolActive;
-    
-#ifdef DEBUG   /* The release build doesn't include support for RTL8111B/8168B. */
     bool revisionC;
-#endif
 };
