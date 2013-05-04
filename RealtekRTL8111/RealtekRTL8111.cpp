@@ -203,7 +203,6 @@ bool RTL8111::start(IOService *provider)
         IOLog("Ethernet [RealtekRTL8111]: attachInterface() failed.\n");
         goto error4;
     }
-    setLinkStatus(kIONetworkLinkValid);
     pciDevice->close(this);
     result = true;
     
@@ -354,6 +353,7 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
         selectedMedium = mediumTable[MEDIUM_INDEX_AUTO];
     }
     selectMedium(selectedMedium);
+    setLinkStatus(kIONetworkLinkValid);
     enableRTL8111();
     
     /* In case we are using an msi the interrupt hasn't been enabled by start(). */
@@ -1599,7 +1599,7 @@ void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt3
 {
     if (revisionC) {
         if (tsoFlags & MBUF_TSO_IPV4) {
-            *cmd2 |= (((mssValue & MSSMask) << MSSShift_C) | TxIPCS_C);
+            *cmd2 |= ((mssValue & MSSMask) << MSSShift_C);
             *cmd1 = LargeSend;
         } else {
             if (checksums & kChecksumTCP)
@@ -1631,7 +1631,7 @@ void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt3
 {
     if (revisionC) {
         if (tsoFlags & MBUF_TSO_IPV4) {
-            *cmd2 |= (((mssValue & MSSMask) << MSSShift_C) | TxIPCS_C);
+            *cmd2 |= ((mssValue & MSSMask) << MSSShift_C);
             *cmd1 = LargeSend;
         } else {
             if (checksums & kChecksumTCP)
