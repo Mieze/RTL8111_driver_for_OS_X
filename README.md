@@ -55,10 +55,12 @@ Changelog
     - Added support for rx checksum offload of TCP and UDP over IPv6.
 - Version 1.0.3 (2013-04-25):
     - The issue after a reboot from Windows has been eliminated.
+- Version 1.0.4 (2013-05-04)
+    - Moved setLinkStatus(kIONetworkLinkValid) from start() to enable(). Cleaned up getDescCommand().
 
 Known Issues
-- Eventually you might find a "Ethernet [RealtekRTL8111]: replaceOrCopyPacket() failed." message in the log file. This is nothing to worry about and means that a single packet has been dropped because the driver failed to allocate a new packet buffer. Packet buffers are allocated from a buffer pool which is dynamically sized by the network stack. When the pool is exhausted the OS increases it's size making the error a self-healing issue.
+- Eventually you might find an "Ethernet [RealtekRTL8111]: replaceOrCopyPacket() failed." message in the log file. This is nothing to worry about and means that a single packet has been dropped because the driver failed to allocate a new packet buffer. Packet buffers are allocated from a buffer pool which is dynamically sized by the network stack. When the pool is exhausted the OS increases it's size making the error a self-healing issue.
 
 Building from Source
 
-I'm using XCode 4.4.1 for development. You can get a free copy of XCode after becoming a member of the Apple developer program. The free membership is sufficient in order to get access to development tools and documentation.
+I'm using XCode 4.6.2 for development. You can get a free copy of XCode after becoming a member of the Apple developer program. The free membership is sufficient in order to get access to development tools and documentation.
