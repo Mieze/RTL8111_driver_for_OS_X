@@ -106,6 +106,10 @@ typedef struct RtlStatData {
 /* transmitter deadlock treshhold in seconds. */
 #define kTxDeadlockTreshhold 2
 
+/* IPv6 specific stuff */
+#define kNextHdrOffset 20
+#define kMinL4HdrOffset 54
+
 /* This definition should have been in IOPCIDevice.h. */
 enum
 {
@@ -135,6 +139,8 @@ enum
 };
 
 #define kEnableEeeName "enableEEE"
+#define kEnableCSO6Name "enableCSO6"
+#define kEnableTSO4Name "enableTSO4"
 #define kNameLenght 64
 
 extern const struct RTLChipInfo rtl_chip_info[];
@@ -219,9 +225,13 @@ private:
     void restartRTL8111();
         
     /* Hardware specific methods */
-    void getDescCommand(UInt32 *cmd1, UInt32 *cmd2, UInt32 checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
+    void getDescCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
     void getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2);
 
+#ifdef DEBUG
+    UInt32 findL4Header(mbuf_t m, UInt8 protocol);
+#endif
+    
     /* RTL8111C specific methods */
     void timerActionRTL8111C(IOTimerEventSource *timer);
 
@@ -301,4 +311,6 @@ private:
     bool wolCapable;
     bool wolActive;
     bool revisionC;
+    bool enableTSO4;
+    bool enableCSO6;
 };

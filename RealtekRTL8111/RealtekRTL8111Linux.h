@@ -1096,7 +1096,9 @@ enum _DescStatusBit {
 	TxUDPCS_C	= (1 << 31), /* Calculate UDP/IP checksum */
 	TxTCPCS_C	= (1 << 30), /* Calculate TCP/IP checksum */
 	TxIPCS_C	= (1 << 29), /* Calculate IP checksum */
+    TxIPV6_C    = (1 << 28), /* IPv6 packet */
     MSSShift_C	= 18,        /* MSS value position */
+    L4OffMask   = 0x3ffU,    /* Level 4 header offset mask */
 	/*@@@@@@ offset 4 of tx descriptor => bits for RTL8168C/CP only		end @@@@@@*/
 
 
