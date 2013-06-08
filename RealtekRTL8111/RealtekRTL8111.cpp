@@ -76,6 +76,7 @@ bool RTL8111::init(OSDictionary *properties)
         pciDeviceData.subsystem_device = 0;
         linuxData.pci_dev = &pciDeviceData;
         unitNumber = 0;
+        intrMitigateValue = 0x5f51;
         wolCapable = false;
         wolActive = false;
         enableTSO4 = false;
@@ -128,8 +129,12 @@ void RTL8111::free()
     super::free();
 }
 
+static const char *onName = "enabled";
+static const char *offName = "disabled";
+
 bool RTL8111::start(IOService *provider)
 {
+    OSNumber *intrMit;
     OSBoolean *enableEEE;
     OSBoolean *tso4;
     OSBoolean *csoV6;
@@ -169,27 +174,25 @@ bool RTL8111::start(IOService *provider)
     else
         linuxData.eeeEnable = 0;
     
-    if (linuxData.eeeEnable)
-        IOLog("Ethernet [RealtekRTL8111]: EEE support enabled.\n");
-    else
-        IOLog("Ethernet [RealtekRTL8111]: EEE support disabled.\n");
+    IOLog("Ethernet [RealtekRTL8111]: EEE support %s.\n", linuxData.eeeEnable ? onName : offName);
     
     tso4 = OSDynamicCast(OSBoolean, getProperty(kEnableTSO4Name));
     enableTSO4 = (tso4) ? tso4->getValue() : false;
     
-    if (enableTSO4)
-        IOLog("Ethernet [RealtekRTL8111]: TCP/IPv4 segmentation offload enabled.\n");
-    else
-        IOLog("Ethernet [RealtekRTL8111]: TCP/IPv4 segmentation offload disabled.\n");
+    IOLog("Ethernet [RealtekRTL8111]: TCP/IPv4 segmentation offload %s.\n", enableTSO4 ? onName : offName);
     
     csoV6 = OSDynamicCast(OSBoolean, getProperty(kEnableCSO6Name));
     enableCSO6 = (csoV6) ? csoV6->getValue() : false;
     
-    if (enableCSO6)
-        IOLog("Ethernet [RealtekRTL8111]: TCP/IPv6 checksum offload enabled.\n");
-    else
-        IOLog("Ethernet [RealtekRTL8111]: TCP/IPv6 checksum offload disabled.\n");
+    IOLog("Ethernet [RealtekRTL8111]: TCP/IPv6 checksum offload %s.\n", enableCSO6 ? onName : offName);
     
+    intrMit = OSDynamicCast(OSNumber, getProperty(kIntrMitigateName));
+    
+    if (intrMit)
+        intrMitigateValue = intrMit->unsigned16BitValue();
+    
+    IOLog("Ethernet [RealtekRTL8111]: Using interrupt mitigate value 0x%x.\n", intrMitigateValue);
+
     if (!initRTL8111()) {
         goto error2;
     }
@@ -689,10 +692,11 @@ IOReturn RTL8111::setPromiscuousMode(bool active)
     DebugLog("setPromiscuousMode() ===>\n");
     
     if (active) {
-        IOLog("Ethernet [RealtekRTL8111]: Promiscuous mode enabled.\n");
+        DebugLog("Ethernet [RealtekRTL8111]: Promiscuous mode enabled.\n");
         rxMode = (AcceptBroadcast | AcceptMulticast | AcceptMyPhys | AcceptAllPhys);
         mcFilter[1] = mcFilter[0] = 0xffffffff;
     } else {
+        DebugLog("Ethernet [RealtekRTL8111]: Promiscuous mode disabled.\n");
         rxMode = (AcceptBroadcast | AcceptMulticast | AcceptMyPhys);
         mcFilter[0] = *filterAddr++;
         mcFilter[1] = *filterAddr;
@@ -1345,6 +1349,8 @@ void RTL8111::txInterrupt()
     }
     if (oldDirtyIndex != txDirtyDescIndex)
         WriteReg8(TxPoll, NPQ);
+    
+    etherStats->dot3TxExtraEntry.interrupts++;
 }
 
 void RTL8111::rxInterrupt()
@@ -1357,8 +1363,8 @@ void RTL8111::rxInterrupt()
     UInt32 descStatus1, descStatus2;
     UInt32 pktSize;
     UInt16 vlanTag;
+    UInt16 goodPkts = 0;
     bool replaced;
-    bool goodPkt = false;
     
     while (!((descStatus1 = OSSwapLittleToHostInt32(desc->opts1)) & DescOwn)) {
         opts1 = (rxNextDescIndex == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
@@ -1374,7 +1380,7 @@ void RTL8111::rxInterrupt()
         }
         
         descStatus2 = OSSwapLittleToHostInt32(desc->opts2);
-        pktSize = (descStatus1 & 0x1fff) - 4;
+        pktSize = (descStatus1 & 0x1fff);
         bufPkt = rxMbufArray[rxNextDescIndex];
         vlanTag = (descStatus2 & RxVlanTag) ? OSSwapInt16(descStatus2 & 0xffff) : 0;
         //DebugLog("rxInterrupt(): descStatus1=0x%x, descStatus2=0x%x, pktSize=%u\n", descStatus1, descStatus2, pktSize);
@@ -1411,7 +1417,7 @@ void RTL8111::rxInterrupt()
             setVlanTag(newPkt, vlanTag);
         
         netif->inputPacket(newPkt, pktSize, IONetworkInterface::kInputOptionQueuePacket);
-        goodPkt = true;
+        goodPkts++;
         
         /* Finally update the descriptor and get the next one to examine. */
     nextDesc:
@@ -1424,8 +1430,10 @@ void RTL8111::rxInterrupt()
         ++rxNextDescIndex &= kRxDescMask;
         desc = &rxDescArray[rxNextDescIndex];
     }
-    if (goodPkt)
+    if (goodPkts)
         netif->flushInputQueue();
+    
+    //etherStats->dot3RxExtraEntry.interrupts++;
 }
 
 void RTL8111::updateStatitics()
@@ -2055,7 +2063,7 @@ bool RTL8111::initRTL8111()
     tp->cp_cmd = ReadReg16(CPlusCmd);
     tp->max_jumbo_frame_size = rtl_chip_info[tp->chipset].jumbo_frame_sz;
     
-    intrMask = (revisionC) ? (SYSErr | TxDescUnavail | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK) : (SYSErr | TxDescUnavail | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
+    intrMask = (revisionC) ? (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK) : (SYSErr | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
     
     /* Get the RxConfig parameters. */
     rxConfigReg = rtl_chip_info[tp->chipset].RCR_Cfg;
@@ -2168,7 +2176,10 @@ void RTL8111::startRTL8111()
     tp->cp_cmd |= PktCntrDisable | INTT_1 | PCIDAC;
     WriteReg16(CPlusCmd, tp->cp_cmd);
     
-    WriteReg16(IntrMitigate, 0x5f51);
+    /* The original value 0x5f51 seems to cause performance issues with SMB. */
+    /* WriteReg16(IntrMitigate, 0x5f51); */
+    WriteReg16(IntrMitigate, intrMitigateValue);
+    
     WriteReg8(Config5, ReadReg8(Config5) & ~BIT_7);
     /*
      //Work around for RxFIFO overflow
@@ -2176,7 +2187,7 @@ void RTL8111::startRTL8111()
      rtl8168_intr_mask |= RxFIFOOver | PCSTimeout;
      rtl8168_intr_mask &= ~RxDescUnavail;
      }
-     */
+    */
     fillDescriptorAddr(baseAddr, txPhyAddr, rxPhyAddr);
     
     /* Set DMA burst size and Interframe Gap Time */

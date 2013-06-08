@@ -82,8 +82,8 @@ typedef struct RtlStatData {
 
 #define kTransmitQueueCapacity  1024
 
-/* Tests have shown that the network stack sends packets of up to 20 segments. */
-#define kMaxSegs 24
+/* With up to 40 segments we should be on the save side. */
+#define kMaxSegs 40
 
 /* The number of descriptors must be a power of 2. */
 #define kNumTxDesc	1024	/* Number of Tx descriptors */
@@ -104,7 +104,7 @@ typedef struct RtlStatData {
 #define kTimeoutMS 1000
 
 /* transmitter deadlock treshhold in seconds. */
-#define kTxDeadlockTreshhold 2
+#define kTxDeadlockTreshhold 3
 
 /* IPv6 specific stuff */
 #define kNextHdrOffset 20
@@ -141,6 +141,7 @@ enum
 #define kEnableEeeName "enableEEE"
 #define kEnableCSO6Name "enableCSO6"
 #define kEnableTSO4Name "enableTSO4"
+#define kIntrMitigateName "intrMitigate"
 #define kNameLenght 64
 
 extern const struct RTLChipInfo rtl_chip_info[];
@@ -299,6 +300,7 @@ private:
     struct IOEthernetAddress origMacAddr;
     
     UInt16 intrMask;
+    UInt16 intrMitigateValue;
     
     /* flags */
     bool isEnabled;

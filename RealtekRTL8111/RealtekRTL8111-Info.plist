@@ -38,6 +38,8 @@
 			<true/>
 			<key>enableCSO6</key>
 			<true/>
+			<key>intrMitigate</key>
+			<integer>44884</integer>
 			<key>IOClass</key>
 			<string>RTL8111</string>
 			<key>IOPCIMatch</key>
@@ -65,5 +67,7 @@
 		<key>com.apple.kpi.mach</key>
 		<string>8.10.0</string>
 	</dict>
+	<key>OSBundleRequired</key>
+	<string>Network-Root</string>
 </dict>
 </plist>
