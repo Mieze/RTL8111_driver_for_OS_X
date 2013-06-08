@@ -8,18 +8,18 @@ OS X open source driver for the Realtek RTL8111/8168 family
 Due to the lack of an OS X driver that makes use of the advanced features of the Realtek RTL81111/8168 series I started a new project with the aim to create a state of the art driver that gets the most out of those NICs which can be found on virtually any cheap board on the market today. Based on Realtek's Linux driver (version 8.035.0) I have written a driver that is optimized for performance while making efficient use of system resources and keeping the CPU usage down under heavy load.
 
 Key Features of the Driver
-- Supports Realtek RTL8111/8168 C/D/E/F/G found on recent boards.
+- Supports Realtek RTL8111/8168 B/C/D/E/F/G found on recent boards.
 - Support for multisegment packets relieving the network stack of unnecessary copy operations when assembling packets for transmission.
 - No-copy receive and transmit. Only small packets are copied on reception because creating a copy is more efficient than allocating a new buffer.
 TCP, UDP and IPv4 checksum offload (receive and transmit).
 - TCP segmentation offload under IPv4.
+- Support for TCP/IPv6 and UDP/IPv6 checksum offload.
 - Fully optimized for Mountain Lion (64bit architecture) but should work with Lion too. Snow Leopard requies some changes.
 - Supports Wake on LAN.
 - Support for Energy Efficient Ethernet (EEE) which can be disabled by setting enableEEE to NO in the drivers Info.plist without rebuild. The default is YES.
 - The driver is published under GPLv2.
 
 Limitations
-- Support for the Realtek RTL8111B/8168B is still experimental. Therefore it is only included in debug builds and has never been tested successfully because I don't have access to a board with one of these outdated chips.
 - As checksum offload doesn't work with jumbo frames they are currently unsupported and will probably never be.
 - No support for 32bit kernels.
 
@@ -33,7 +33,7 @@ Before you install the driver you have to remove any installed driver for RTL811
     
 - Open System Preferences and delete the corresponding network interface, e. g. en0. If you forget this step you might experience strange problems with certain Apple domains, iTunes and iCloud later.
     
-- Shutdown, wait for 30 seconds and reboot.
+- Reboot.
     
 - Install the new driver and recreate the kernel cache.
     
@@ -45,7 +45,7 @@ Before you install the driver you have to remove any installed driver for RTL811
 
 Current status
 
-The driver has been successfully tested under 10.8.2 and 10.8.3 with the D (chipset 9), E (chipset 16) and F (chipset 17) versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are 25 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
+The driver has been successfully tested under 10.8.2, 10.8.3 and 10.8.4 with the D (chipset 9), E (chipset 16) and F (chipset 17) versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are 25 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
 
 Changelog
 - Version 1.0.1 (2013-03-31):
@@ -57,9 +57,17 @@ Changelog
     - The issue after a reboot from Windows has been eliminated.
 - Version 1.0.4 (2013-05-04)
     - Moved setLinkStatus(kIONetworkLinkValid) from start() to enable(). Cleaned up getDescCommand().
+- Version 1.1.0 (2013-06-08):
+    - Support for TCP/IPv6 and UDP/IPv6 checksum offload added (can be disabled in Info.plist).
+    - Maximum size of the scatter-gather-list has been increased from 24 to 40 segments to resolve performance issues with TSO4 when offloading large packets which are highly fragmented.
+    - TSO4 can be disabled in Info.plist without rebuild.
+    - Statistics gathering has been improved to deliver more detailed information (resource shortages, transmitter resets, transmitter interrupt count).
+    - The interrupt mitigate settings has been changed to improve performance with SMB and to reduce CPU load.
+    - Configuration option added to allow for user defined interrupt mitigate settings without rebuild (see above).
 
 Known Issues
-- Eventually you might find an "Ethernet [RealtekRTL8111]: replaceOrCopyPacket() failed." message in the log file. This is nothing to worry about and means that a single packet has been dropped because the driver failed to allocate a new packet buffer. Packet buffers are allocated from a buffer pool which is dynamically sized by the network stack. When the pool is exhausted the OS increases it's size making the error a self-healing issue.
+- There are still performance problems with regard to SMB in certain configurations. My tests indicate that Apple's Broadcom driver shows the same behavior with those configurations. Obviously it's a more general problem that is not limited to my driver.
+- RTL8111C: WoL does not work .
 
 Building from Source
 
