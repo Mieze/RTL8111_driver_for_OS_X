@@ -103,8 +103,11 @@ typedef struct RtlStatData {
 /* statitics timer period in ms. */
 #define kTimeoutMS 1000
 
+/* Treshhold value in ns for the modified interrupt sequence. */
+#define kFastIntrTreshhold 250000
+
 /* transmitter deadlock treshhold in seconds. */
-#define kTxDeadlockTreshhold 3
+#define kTxDeadlockTreshhold 10
 
 /* IPv6 specific stuff */
 #define kNextHdrOffset 20
@@ -253,9 +256,9 @@ private:
 	IOEthernetInterface *netif;
 	IOMemoryMap *baseMap;
     volatile void *baseAddr;
+    UInt64 lastIntrTime;
     
     /* transmitter data */
-    mbuf_t txMbufArray[kNumTxDesc];
     mbuf_t txNext2FreeMbuf;
     IOBufferMemoryDescriptor *txBufDesc;
     IOPhysicalAddress64 txPhyAddr;
@@ -266,9 +269,10 @@ private:
     UInt32 txNextDescIndex;
     UInt32 txDirtyDescIndex;
     SInt32 txNumFreeDesc;
+    //UInt32 txIntrCount;
+    //UInt32 txIntrRate;
 
     /* receiver data */
-    mbuf_t rxMbufArray[kNumRxDesc];
     IOBufferMemoryDescriptor *rxBufDesc;
     IOPhysicalAddress64 rxPhyAddr;
     struct RtlDmaDesc *rxDescArray;
@@ -277,7 +281,7 @@ private:
     UInt32 rxNextDescIndex;
     UInt32 rxConfigReg;
     UInt32 rxConfigMask;
-    
+
     /* power management data */
     unsigned long powerState;
     
@@ -301,6 +305,8 @@ private:
     
     UInt16 intrMask;
     UInt16 intrMitigateValue;
+    UInt32 fastIntrCount;
+    UInt32 slowIntrCount;
     
     /* flags */
     bool isEnabled;
@@ -315,4 +321,8 @@ private:
     bool revisionC;
     bool enableTSO4;
     bool enableCSO6;
+    
+    /* mbuf_t arrays */
+    mbuf_t txMbufArray[kNumTxDesc];
+    mbuf_t rxMbufArray[kNumRxDesc];
 };

@@ -271,7 +271,7 @@
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 1.1.1;
+				MODULE_VERSION = 1.1.2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
 			};
@@ -290,7 +290,7 @@
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 1.1.1;
+				MODULE_VERSION = 1.1.2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
 			};
