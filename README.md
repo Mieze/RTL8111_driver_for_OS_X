@@ -66,6 +66,9 @@ Changelog
     - Configuration option added to allow for user defined interrupt mitigate settings without rebuild (see above).
 - Version 1.1.1 (2013-06-29):
     - Remove ethernet CRC from received packets to fix rx checksum offload.
+- Version 1.1.2 (2013-08-03):
+    - Improved SMB performance in certain configurations.
+    - Faster browsing of large shares.
 
 Known Issues
 - There are still performance problems with regard to SMB in certain configurations. My tests indicate that Apple's Broadcom driver shows the same behavior with those configurations. Obviously it's a more general problem that is not limited to my driver.
