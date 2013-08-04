@@ -80,7 +80,7 @@ typedef struct RtlStatData {
 	UInt16	txUnderun;
 } RtlStatData;
 
-#define kTransmitQueueCapacity  1024
+#define kTransmitQueueCapacity  4096
 
 /* With up to 40 segments we should be on the save side. */
 #define kMaxSegs 40
@@ -104,10 +104,10 @@ typedef struct RtlStatData {
 #define kTimeoutMS 1000
 
 /* Treshhold value in ns for the modified interrupt sequence. */
-#define kFastIntrTreshhold 250000
+#define kFastIntrTreshhold 200000
 
 /* transmitter deadlock treshhold in seconds. */
-#define kTxDeadlockTreshhold 10
+#define kTxDeadlockTreshhold 3
 
 /* IPv6 specific stuff */
 #define kNextHdrOffset 20
@@ -256,7 +256,6 @@ private:
 	IOEthernetInterface *netif;
 	IOMemoryMap *baseMap;
     volatile void *baseAddr;
-    UInt64 lastIntrTime;
     
     /* transmitter data */
     mbuf_t txNext2FreeMbuf;
@@ -303,10 +302,9 @@ private:
     struct IOEthernetAddress currMacAddr;
     struct IOEthernetAddress origMacAddr;
     
+    UInt64 lastIntrTime;
     UInt16 intrMask;
     UInt16 intrMitigateValue;
-    UInt32 fastIntrCount;
-    UInt32 slowIntrCount;
     
     /* flags */
     bool isEnabled;

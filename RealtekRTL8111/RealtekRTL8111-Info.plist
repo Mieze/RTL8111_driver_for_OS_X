@@ -39,7 +39,7 @@
 			<key>enableCSO6</key>
 			<true/>
 			<key>intrMitigate</key>
-			<integer>44884</integer>
+			<integer>53096</integer>
 			<key>IOClass</key>
 			<string>RTL8111</string>
 			<key>IOPCIMatch</key>

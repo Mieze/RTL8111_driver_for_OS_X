@@ -79,8 +79,6 @@ bool RTL8111::init(OSDictionary *properties)
         intrMitigateValue = 0x5f51;
         //txIntrCount = 0;
         //txIntrRate = 0;
-        fastIntrCount = 0;
-        slowIntrCount = 0;
         lastIntrTime = 0;
         wolCapable = false;
         wolActive = false;
@@ -1586,8 +1584,7 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
 {
     UInt64 time, abstime;
 	UInt16 status;
-    //UInt16 rxMask;
-    UInt16 newIntrMask = intrMask;
+    UInt16 rxMask;
     
 	WriteReg16(IntrMask, 0x0000);
     status = ReadReg16(IntrStatus);
@@ -1599,31 +1596,19 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     /* Calculate time since last interrupt. */
     clock_get_uptime(&abstime);
     absolutetime_to_nanoseconds(abstime, &time);
-    
-    if ((time - lastIntrTime) < kFastIntrTreshhold) {
-        newIntrMask = (SYSErr | LinkChg | RxDescUnavail | RxErr | RxOK);
-        fastIntrCount++;
-    } else {
-        slowIntrCount++;
-    }
-    //rxMask = ((time - lastIntrTime) < kFastIntrTreshhold) ? (RxOK | RxDescUnavail | RxFIFOOver) : (RxOK | RxDescUnavail | RxFIFOOver | TxOK);
+    rxMask = ((time - lastIntrTime) < kFastIntrTreshhold) ? (RxOK | RxDescUnavail | RxFIFOOver) : (RxOK | RxDescUnavail | RxFIFOOver | TxOK);
     lastIntrTime = time;
     
     if (status & SYSErr)
         pciErrorInterrupt();
     
     /* Rx interrupt */
-    //if (status & rxMask)
-    //    rxInterrupt();
+    if (status & rxMask)
+        rxInterrupt();
 
     /* Tx interrupt */
-    //if (status & (TxOK | TxErr | TxDescUnavail))
-    //    txInterrupt();
-    
-    if (status & (RxOK | RxDescUnavail | RxFIFOOver | TxOK | TxErr | TxDescUnavail)) {
-        rxInterrupt();
+    if (status & (TxOK | TxErr | TxDescUnavail))
         txInterrupt();
-    }
     
     if (status & LinkChg)
         checkLinkStatus();
@@ -1634,8 +1619,7 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     
 done:
     WriteReg16(IntrStatus, status);
-	//WriteReg16(IntrMask, intrMask);
-	WriteReg16(IntrMask, newIntrMask);
+	WriteReg16(IntrMask, intrMask);
 }
 
 bool RTL8111::checkForDeadlock()
@@ -3190,18 +3174,22 @@ void RTL8111::setOffset79(UInt8 setting)
 
 void RTL8111::timerActionRTL8111C(IOTimerEventSource *timer)
 {
-    UInt32 count;
+    /*
+    UInt32 count1, count2;
     static UInt32 txIntrCount = 0;
-    
+    static UInt32 rxIntrCount = 0;
+    */
     //DebugLog("timerActionRTL8111C() ===>\n");
     
-    /* Calculate the  transmitter interrupt rate.*/
-    count = etherStats->dot3TxExtraEntry.interrupts;
-    IOLog("Ethernet [RealtekRTL8111]: Interrupt rate: %u, fast: %u slow: %u.\n", count - txIntrCount, fastIntrCount, slowIntrCount);
-    fastIntrCount = 0;
-    slowIntrCount = 0;
-    txIntrCount = count;
+    /* Calculate the transmitter and receiver interrupt rate.*/
+    /*
+    count1 = etherStats->dot3TxExtraEntry.interrupts;
+    count2 = etherStats->dot3RxExtraEntry.interrupts;
     
+    IOLog("Ethernet [RealtekRTL8111]: Interrupt rate: tx=%u, rx=%u.\n", count1 - txIntrCount, count2 - rxIntrCount);
+    txIntrCount = count1;
+    rxIntrCount = count2;
+    */
     if (!linkUp) {
         DebugLog("Ethernet [RealtekRTL8111]: Timer fired while link down.\n");
         goto done;
@@ -3231,16 +3219,24 @@ done:
 
 void RTL8111::timerActionRTL8111B(IOTimerEventSource *timer)
 {
-    //UInt32 count;
 	UInt8 currLinkState;
     bool newLinkState;
+    /*
+    UInt32 count1, count2;
+    static UInt32 txIntrCount = 0;
+    static UInt32 rxIntrCount = 0;
+    */
+    //DebugLog("timerActionRTL8111C() ===>\n");
     
-    //DebugLog("timerActionRTL8111B() ===>\n");
-    
-    /* Calculate the  transmitter interrupt rate.*/
-    //count = etherStats->dot3TxExtraEntry.interrupts;
-    //txIntrRate = count - txIntrCount;
-    //txIntrCount = count;
+    /* Calculate the transmitter and receiver interrupt rate.*/
+    /*
+    count1 = etherStats->dot3TxExtraEntry.interrupts;
+    count2 = etherStats->dot3RxExtraEntry.interrupts;
+     
+    IOLog("Ethernet [RealtekRTL8111]: Interrupt rate: tx=%u, rx=%u.\n", count1 - txIntrCount, count2 - rxIntrCount);
+    txIntrCount = count1;
+    rxIntrCount = count2;
+    */
 
     currLinkState = ReadReg8(PHYstatus);
 	newLinkState = (currLinkState & LinkStatus) ? true : false;
