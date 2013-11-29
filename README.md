@@ -69,13 +69,13 @@ Changelog
 - Version 1.1.2 (2013-08-03):
     - Improved SMB performance in certain configurations.
     - Faster browsing of large shares.
-Version 1.1.3 (2013-11-29):
+- Version 1.1.3 (2013-11-29):
     - Improved transmit queue handling made it possible to reduce CPU load during packet transmission.
     - Improved deadlock detection logic in order to avoid false positives due to lost interrupts.
 
 Known Issues
 - There are still performance problems with regard to SMB in certain configurations. My tests indicate that Apple's Broadcom driver shows the same behavior with those configurations. Obviously it's a more general problem that is not limited to my driver.
-- WoL seems to fail on some machines.
+- WoL refuses to work on some machines.
 
 Building from Source
 
