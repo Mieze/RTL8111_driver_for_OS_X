@@ -1553,7 +1553,12 @@ bool RTL8111::checkForDeadlock()
     
     if ((txDescDoneCount == txDescDoneLast) && (txNumFreeDesc < kNumTxDesc)) {        
         if (++deadlockWarn == kTxCheckTreshhold) {
+            /* Some members of the RTL8111 family seem to be prone to lose transmitter rinterrupts.
+             * In order to avoid false positives when trying to detect transmitter deadlocks, check
+             * the transmitter ring once for completed descriptors before we assume a deadlock. 
+             */
             IOLog("Ethernet [RealtekRTL8111]: Tx timeout. Lost interrupt?\n");
+            etherStats->dot3TxExtraEntry.timeouts++;
             txInterrupt();
         } else if (deadlockWarn >= kTxDeadlockTreshhold) {
 #ifdef DEBUG
