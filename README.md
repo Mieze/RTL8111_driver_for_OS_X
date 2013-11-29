@@ -45,7 +45,7 @@ Before you install the driver you have to remove any installed driver for RTL811
 
 Current status
 
-The driver has been successfully tested under 10.8.2, 10.8.3 and 10.8.4 with the D (chipset 9), E (chipset 16) and F (chipset 17) versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are 25 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
+The driver has been successfully tested under 10.8.2 - 10.8.5 and 10.9 with the D (chipset 9), E (chipset 16) and F (chipset 17) versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are 25 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
 
 Changelog
 - Version 1.0.1 (2013-03-31):
