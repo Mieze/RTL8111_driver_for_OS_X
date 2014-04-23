@@ -15,10 +15,10 @@
  *
  * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
- * This driver is based on Realtek's r8168 Linux driver (8.035.0).
+ * This driver is based on Realtek's r8168 Linux driver (8.037.0).
  */
 
-#include "RealtekRTL8111Linux.h"
+#include "RealtekRTL8111Linux-803700.h"
 
 #ifdef DEBUG
 #define DebugLog(args...) IOLog(args)
@@ -228,7 +228,13 @@ private:
     void startRTL8111();
     void setOffset79(UInt8 setting);
     void restartRTL8111();
-        
+    
+    UInt8 csiFun0ReadByte(UInt32 addr);
+    void csiFun0WriteByte(UInt32 addr, UInt8 value);
+    void disablePCIOffset99();
+    void setPCI99_180ExitDriverPara();
+    void hardwareD3Para();
+
     /* Hardware specific methods */
     void getDescCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
     void getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2);

@@ -288,4 +288,5 @@ struct pci_dev {
     UInt16 subsystem_device;
 };
 
+#define eee_enable tp->eeeEnable
 #endif

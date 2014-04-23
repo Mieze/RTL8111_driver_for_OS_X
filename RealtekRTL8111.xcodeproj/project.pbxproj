@@ -7,16 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D33D08EF1890817100B48E37 /* RealtekRTL8111Linux-803700.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D33D08EE1890817100B48E37 /* RealtekRTL8111Linux-803700.cpp */; };
 		D37BD68916C605F500C255A2 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = D37BD68716C605F500C255A2 /* InfoPlist.strings */; };
 		D37BD69916C6065300C255A2 /* RealtekRTL8111.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D37BD69716C6065300C255A2 /* RealtekRTL8111.cpp */; };
 		D37BD69F16C6068D00C255A2 /* linux.h in Headers */ = {isa = PBXBuildFile; fileRef = D37BD69B16C6068D00C255A2 /* linux.h */; };
 		D37BD6A016C6068D00C255A2 /* mii.h in Headers */ = {isa = PBXBuildFile; fileRef = D37BD69C16C6068D00C255A2 /* mii.h */; };
 		D37BD6A116C6068D00C255A2 /* if_ether.h in Headers */ = {isa = PBXBuildFile; fileRef = D37BD69D16C6068D00C255A2 /* if_ether.h */; };
 		D37BD6A216C6068D00C255A2 /* ethertool.h in Headers */ = {isa = PBXBuildFile; fileRef = D37BD69E16C6068D00C255A2 /* ethertool.h */; };
-		D37BD6AA16C6078B00C255A2 /* RealtekRTL8111Linux.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D37BD6A916C6078B00C255A2 /* RealtekRTL8111Linux.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		D33D08ED1890815C00B48E37 /* RealtekRTL8111Linux-803700.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "RealtekRTL8111Linux-803700.h"; sourceTree = "<group>"; };
+		D33D08EE1890817100B48E37 /* RealtekRTL8111Linux-803700.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = "RealtekRTL8111Linux-803700.cpp"; sourceTree = "<group>"; };
 		D37A5F5B16CAF7D600644820 /* gpl.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = gpl.txt; sourceTree = "<group>"; };
 		D37BD67F16C605F500C255A2 /* RealtekRTL8111.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RealtekRTL8111.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		D37BD68316C605F500C255A2 /* Kernel.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Kernel.framework; path = System/Library/Frameworks/Kernel.framework; sourceTree = SDKROOT; };
@@ -29,8 +31,6 @@
 		D37BD69C16C6068D00C255A2 /* mii.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = mii.h; sourceTree = "<group>"; };
 		D37BD69D16C6068D00C255A2 /* if_ether.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = if_ether.h; sourceTree = "<group>"; };
 		D37BD69E16C6068D00C255A2 /* ethertool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ethertool.h; sourceTree = "<group>"; };
-		D37BD6A716C6073000C255A2 /* RealtekRTL8111Linux.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RealtekRTL8111Linux.h; sourceTree = "<group>"; };
-		D37BD6A916C6078B00C255A2 /* RealtekRTL8111Linux.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RealtekRTL8111Linux.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,8 +82,8 @@
 			children = (
 				D37BD69616C6065300C255A2 /* RealtekRTL8111.h */,
 				D37BD69716C6065300C255A2 /* RealtekRTL8111.cpp */,
-				D37BD6A716C6073000C255A2 /* RealtekRTL8111Linux.h */,
-				D37BD6A916C6078B00C255A2 /* RealtekRTL8111Linux.cpp */,
+				D33D08ED1890815C00B48E37 /* RealtekRTL8111Linux-803700.h */,
+				D33D08EE1890817100B48E37 /* RealtekRTL8111Linux-803700.cpp */,
 				D37BD69B16C6068D00C255A2 /* linux.h */,
 				D37BD69C16C6068D00C255A2 /* mii.h */,
 				D37BD69D16C6068D00C255A2 /* if_ether.h */,
@@ -193,7 +193,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D37BD69916C6065300C255A2 /* RealtekRTL8111.cpp in Sources */,
-				D37BD6AA16C6078B00C255A2 /* RealtekRTL8111Linux.cpp in Sources */,
+				D33D08EF1890817100B48E37 /* RealtekRTL8111Linux-803700.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -271,7 +271,7 @@
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 1.1.3;
+				MODULE_VERSION = 1.2.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
 			};
@@ -290,7 +290,7 @@
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 1.1.3;
+				MODULE_VERSION = 1.2.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
 			};
