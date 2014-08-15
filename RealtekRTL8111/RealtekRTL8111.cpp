@@ -23,7 +23,6 @@
 
 #pragma mark --- function prototypes ---
 
-static inline void fillDescriptorAddr(volatile void *baseAddr, IOPhysicalAddress64 txPhyAddr, IOPhysicalAddress64 rxPhyAddr);
 static inline u32 ether_crc(int length, unsigned char *data);
 
 #pragma mark --- public methods ---
@@ -74,7 +73,6 @@ bool RTL8111::init(OSDictionary *properties)
         pciDeviceData.subsystem_vendor = 0;
         pciDeviceData.subsystem_device = 0;
         linuxData.pci_dev = &pciDeviceData;
-        unitNumber = 0;
         intrMitigateValue = 0x5f51;
         //txIntrCount = 0;
         //txIntrRate = 0;
@@ -83,6 +81,7 @@ bool RTL8111::init(OSDictionary *properties)
         wolActive = false;
         enableTSO4 = false;
         enableCSO6 = false;
+        disableASPM = false;
     }
     
 done:
@@ -135,6 +134,8 @@ bool RTL8111::start(IOService *provider)
     OSBoolean *enableEEE;
     OSBoolean *tso4;
     OSBoolean *csoV6;
+    OSBoolean *noASPM;
+    OSString *versionString;
     bool result;
     
     result = super::start(provider);
@@ -160,6 +161,11 @@ bool RTL8111::start(IOService *provider)
         goto error1;
     }
     
+    noASPM = OSDynamicCast(OSBoolean, getProperty(kDisableASPMName));
+    disableASPM = (noASPM) ? noASPM->getValue() : false;
+    
+    DebugLog("Ethernet [RealtekRTL8111]: PCIe ASPM support %s.\n", disableASPM ? offName : onName);
+
     if (!initPCIConfigSpace(pciDevice)) {
         goto error2;
     }
@@ -188,7 +194,12 @@ bool RTL8111::start(IOService *provider)
     if (intrMit)
         intrMitigateValue = intrMit->unsigned16BitValue();
     
-    IOLog("Ethernet [RealtekRTL8111]: Using interrupt mitigate value 0x%x.\n", intrMitigateValue);
+    versionString = OSDynamicCast(OSString, getProperty(kDriverVersionName));
+    
+    if (versionString)
+        IOLog("Ethernet [RealtekRTL8111]: Version %s using interrupt mitigate value 0x%x.\n", versionString->getCStringNoCopy(), intrMitigateValue);
+    else
+        IOLog("Ethernet [RealtekRTL8111]: Using interrupt mitigate value 0x%x.\n", intrMitigateValue);
 
     if (!initRTL8111()) {
         goto error2;
@@ -217,7 +228,6 @@ bool RTL8111::start(IOService *provider)
         IOLog("Ethernet [RealtekRTL8111]: attachInterface() failed.\n");
         goto error3;
     }
-    unitNumber = netif->getUnitNumber();
     pciDevice->close(this);
     result = true;
     
@@ -320,8 +330,12 @@ void RTL8111::systemWillShutdown(IOOptionBits specifier)
 {
     DebugLog("systemWillShutdown() ===>\n");
     
-    if ((kIOMessageSystemWillPowerOff | kIOMessageSystemWillRestart) & specifier)
+    if ((kIOMessageSystemWillPowerOff | kIOMessageSystemWillRestart) & specifier) {
         disable(netif);
+        
+        /* Restore the original MAC address. */
+        rtl8168_rar_set(&linuxData, (UInt8 *)&origMacAddr.bytes);
+    }
     
     DebugLog("systemWillShutdown() <===\n");
 
@@ -409,9 +423,12 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
 
     disableRTL8111();
     
-    setLinkStatus(kIONetworkLinkValid);
+    if (linkUp)
+        IOLog("Ethernet [RealtekRTL8111]: Link down on en%u\n", netif->getUnitNumber());
+    
     linkUp = false;
-    txClearDescriptors(true);
+    setLinkStatus(kIONetworkLinkValid);
+    txClearDescriptors();
     
     if (pciDevice && pciDevice->isOpen())
         pciDevice->close(this);
@@ -710,7 +727,8 @@ IOReturn RTL8111::setMulticastList(IOEthernetAddress *addrs, UInt32 count)
     
     DebugLog("setMulticastList() ===>\n");
     
-    if (count <= kMCFilterLimit) {
+    /* Chipset 17 doesn't include a multicast filter. */
+    if ((count <= kMCFilterLimit) && (linuxData.mcfg != CFG_METHOD_18)) {
         for (i = 0; i < count; i++, addrs++) {
             bitNumber = ether_crc(6, reinterpret_cast<unsigned char *>(addrs)) >> 26;
             filter |= (1 << (bitNumber & 0x3f));
@@ -1221,7 +1239,7 @@ void RTL8111::freeDMADescriptors()
     }
 }
 
-void RTL8111::txClearDescriptors(bool withReset)
+void RTL8111::txClearDescriptors()
 {
     mbuf_t m;
     UInt32 lastIndex = kTxLastDesc;
@@ -1242,11 +1260,7 @@ void RTL8111::txClearDescriptors(bool withReset)
             txMbufArray[i] = NULL;
         }
     }
-    if (withReset)
-        txDirtyDescIndex = txNextDescIndex = 0;
-    else
-        txDirtyDescIndex = txNextDescIndex;
-    
+    txDirtyDescIndex = txNextDescIndex = 0;    
     txNumFreeDesc = kNumTxDesc;
     
     DebugLog("txClearDescriptors() <===\n");
@@ -1418,18 +1432,7 @@ void RTL8111::checkLinkStatus()
 				rtl8168_eri_write(baseAddr, 0x1bc, 4, 0x0000001f, ERIAR_ExGMAC);
 				rtl8168_eri_write(baseAddr, 0x1dc, 4, 0x0000003f, ERIAR_ExGMAC);
 			}
-			if (isEnabled && (ReadReg8(ChipCmd) & (CmdRxEnb | CmdTxEnb))==0) {
-				int timeout;
-                
-				for (timeout = 0; timeout < 10; timeout++) {
-					if ((rtl8168_eri_read(baseAddr, 0x1AE, 4, ERIAR_ExGMAC) & BIT_13)==0)
-						break;
-					mdelay(1);
-				}
-				WriteReg8(ChipCmd, CmdRxEnb | CmdTxEnb);
-			}
 		} else if ((tp->mcfg == CFG_METHOD_16 || tp->mcfg == CFG_METHOD_17) && isEnabled) {
-			u32 eri_data;
 			if (tp->mcfg == CFG_METHOD_16 && (currLinkState & _10bps)) {
 				WriteReg32(RxConfig, ReadReg32(RxConfig) | AcceptAllPhys);
 			} else if (tp->mcfg == CFG_METHOD_17) {
@@ -1443,22 +1446,6 @@ void RTL8111::checkLinkStatus()
 					rtl8168_eri_write(baseAddr, 0x1bc, 4, 0x0000001f, ERIAR_ExGMAC);
 					rtl8168_eri_write(baseAddr, 0x1dc, 4, 0x0000003f, ERIAR_ExGMAC);
 				}
-			}
-			eri_data = rtl8168_eri_read(baseAddr, 0xDC, 1, ERIAR_ExGMAC);
-			eri_data &= ~BIT_0;
-			rtl8168_eri_write(baseAddr, 0xDC, 1, eri_data, ERIAR_ExGMAC);
-			eri_data |= BIT_0;
-			rtl8168_eri_write(baseAddr, 0xDC, 1, eri_data, ERIAR_ExGMAC);
-            
-			if ((ReadReg8(ChipCmd) & (CmdRxEnb | CmdTxEnb))==0) {
-				int timeout;
-                
-				for (timeout = 0; timeout < 10; timeout++) {
-					if ((rtl8168_eri_read(baseAddr, 0x1AE, 4, ERIAR_ExGMAC) & BIT_13)==0)
-						break;
-					mdelay(1);
-				}
-				WriteReg8(ChipCmd, CmdRxEnb | CmdTxEnb);
 			}
 		} else if ((tp->mcfg == CFG_METHOD_14 || tp->mcfg == CFG_METHOD_15) && linuxData.eeeEnable == 1){
 			//Full -Duplex  mode
@@ -1491,13 +1478,6 @@ void RTL8111::checkLinkStatus()
                     mdio_write(tp, 0x1F, 0x0000);
                     mdio_write(tp, MII_ADVERTISE, mdio_read(tp, MII_ADVERTISE)&~(ADVERTISE_PAUSE_CAP|ADVERTISE_PAUSE_ASYM));
                 }
-            }
-			if ((ReadReg8(ChipCmd) & (CmdRxEnb | CmdTxEnb)) == 0) {
-                WriteReg8(ChipCmd, CmdRxEnb | CmdTxEnb);
-			}
-            if (tp->mcfg == CFG_METHOD_23) {
-                WriteReg32(ERIDR, 0x00000000);
-                WriteReg32(ERIAR, 0x8042f108);
             }
 		}
         setLinkUp(currLinkState);
@@ -1533,9 +1513,10 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     rxMask = ((time - lastIntrTime) < kFastIntrTreshhold) ? (RxOK | RxDescUnavail | RxFIFOOver) : (RxOK | RxDescUnavail | RxFIFOOver | TxOK);
     lastIntrTime = time;
     
-    if (status & SYSErr)
+    if (status & SYSErr) {
         pciErrorInterrupt();
-    
+        goto done;
+    }
     /* Rx interrupt */
     if (status & rxMask)
         rxInterrupt();
@@ -1546,10 +1527,6 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     
     if (status & LinkChg)
         checkLinkStatus();
-    
-    /* Check if a statistics dump has been completed. */
-    if (needsUpdate && !(ReadReg32(CounterAddrLow) & CounterDump))
-        updateStatitics();
     
 done:
     WriteReg16(IntrStatus, status);
@@ -1774,7 +1751,7 @@ void RTL8111::setLinkUp(UInt8 linkState)
     else
         flowName = offFlowName;
     
-    WriteReg16(IntrMitigate, newIntrMitigate);
+    startRTL8111(newIntrMitigate, false);
     linkUp = true;
     setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, mediumTable[mediumIndex], mediumSpeed, NULL);
     
@@ -1786,11 +1763,13 @@ void RTL8111::setLinkUp(UInt8 linkState)
         stalled = false;
         DebugLog("Ethernet [RealtekRTL8111]: Restart stalled queue!\n");
     }
-    IOLog("Ethernet [RealtekRTL8111]: Link up on en%u, %s, %s, %s\n", unitNumber, speedName, duplexName, flowName);
+    IOLog("Ethernet [RealtekRTL8111]: Link up on en%u, %s, %s, %s\n", netif->getUnitNumber(), speedName, duplexName, flowName);
 }
 
 void RTL8111::setLinkDown()
 {
+    struct rtl8168_private *tp = &linuxData;
+
     deadlockWarn = 0;
     needsUpdate = false;
     //txIntrRate = 0;
@@ -1802,16 +1781,53 @@ void RTL8111::setLinkDown()
     /* Update link status. */
     linkUp = false;
     setLinkStatus(kIONetworkLinkValid);
-    
+
+    rtl8168_nic_reset(&linuxData);
+
     /* Cleanup descriptor ring. */
-    txClearDescriptors(false);
-    IOLog("Ethernet [RealtekRTL8111]: Link down on en%u\n", unitNumber);
+    txClearDescriptors();
+    
+    rtl8168_set_speed(tp, autoneg, speed, duplex);
+
+    switch (tp->mcfg) {
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+        case CFG_METHOD_23:
+        case CFG_METHOD_24:
+        case CFG_METHOD_25:
+        case CFG_METHOD_27:
+            if (tp->org_pci_offset_99 & BIT_2)
+                if (!(ReadReg8(PHYstatus) & PowerSaveStatus)) {
+                    rtl8168_issue_offset_99_event(tp);
+                }
+            break;
+    }
+    IOLog("Ethernet [RealtekRTL8111]: Link down on en%u\n", netif->getUnitNumber());
 }
 
-void RTL8111::dumpTallyCounter()
+void RTL8111::updateStatitics()
 {
+    UInt32 sgColl, mlColl;
     UInt32 cmd;
-    
+
+    /* Check if a statistics dump has been completed. */
+    if (needsUpdate && !(ReadReg32(CounterAddrLow) & CounterDump)) {
+        needsUpdate = false;
+        netStats->inputPackets = OSSwapLittleToHostInt64(statData->rxPackets) & 0x00000000ffffffff;
+        netStats->inputErrors = OSSwapLittleToHostInt32(statData->rxErrors);
+        netStats->outputPackets = OSSwapLittleToHostInt64(statData->txPackets) & 0x00000000ffffffff;
+        netStats->outputErrors = OSSwapLittleToHostInt32(statData->txErrors);
+        
+        sgColl = OSSwapLittleToHostInt32(statData->txOneCollision);
+        mlColl = OSSwapLittleToHostInt32(statData->txMultiCollision);
+        netStats->collisions = sgColl + mlColl;
+        
+        etherStats->dot3StatsEntry.singleCollisionFrames = sgColl;
+        etherStats->dot3StatsEntry.multipleCollisionFrames = mlColl;
+        etherStats->dot3StatsEntry.alignmentErrors = OSSwapLittleToHostInt16(statData->alignErrors);
+        etherStats->dot3StatsEntry.missedFrames = OSSwapLittleToHostInt16(statData->rxMissed);
+        etherStats->dot3TxExtraEntry.underruns = OSSwapLittleToHostInt16(statData->txUnderun);
+    }
     /* Some chips are unable to dump the tally counter while the receiver is disabled. */
     if (ReadReg8(ChipCmd) & CmdRxEnb) {
         WriteReg32(CounterAddrHigh, (statPhyAddr >> 32));
@@ -1820,27 +1836,6 @@ void RTL8111::dumpTallyCounter()
         WriteReg32(CounterAddrLow, cmd | CounterDump);
         needsUpdate = true;
     }
-}
-
-void RTL8111::updateStatitics()
-{
-    UInt32 sgColl, mlColl;
-    
-    needsUpdate = false;
-    netStats->inputPackets = OSSwapLittleToHostInt64(statData->rxPackets) & 0x00000000ffffffff;
-    netStats->inputErrors = OSSwapLittleToHostInt32(statData->rxErrors);
-    netStats->outputPackets = OSSwapLittleToHostInt64(statData->txPackets) & 0x00000000ffffffff;
-    netStats->outputErrors = OSSwapLittleToHostInt32(statData->txErrors);
-    
-    sgColl = OSSwapLittleToHostInt32(statData->txOneCollision);
-    mlColl = OSSwapLittleToHostInt32(statData->txMultiCollision);
-    netStats->collisions = sgColl + mlColl;
-    
-    etherStats->dot3StatsEntry.singleCollisionFrames = sgColl;
-    etherStats->dot3StatsEntry.multipleCollisionFrames = mlColl;
-    etherStats->dot3StatsEntry.alignmentErrors = OSSwapLittleToHostInt16(statData->alignErrors);
-    etherStats->dot3StatsEntry.missedFrames = OSSwapLittleToHostInt16(statData->rxMissed);
-    etherStats->dot3TxExtraEntry.underruns = OSSwapLittleToHostInt16(statData->txUnderun);
 }
 
 #pragma mark --- hardware initialization methods ---
@@ -1882,8 +1877,13 @@ bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
         DebugLog("Ethernet [RealtekRTL8111]: PCIe link capabilities: 0x%08x, link control: 0x%04x.\n", pcieLinkCap, pcieLinkCtl);
         
         if (pcieLinkCtl & (kIOPCIELinkCtlASPM | kIOPCIELinkCtlClkReqEn)) {
-            IOLog("Ethernet [RealtekRTL8111]: Warning: PCIe ASPM enabled.\n");
-            linuxData.aspm = 1;
+            if (disableASPM) {
+                IOLog("Ethernet [RealtekRTL8111]: Disable PCIe ASPM.\n");
+                provider->configWrite16(pcieCapOffset + kIOPCIELinkControl, (pcieLinkCtl & ~(kIOPCIELinkCtlL0s | kIOPCIELinkCtlL1 | kIOPCIELinkCtlClkReqEn)));
+            } else {
+                IOLog("Ethernet [RealtekRTL8111]: Warning: PCIe ASPM enabled.\n");
+                linuxData.aspm = 1;
+            }
         }
     }
     /* Enable the device. */
@@ -1936,14 +1936,18 @@ IOReturn RTL8111::setPowerStateSleepAction(OSObject *owner, void *arg1, void *ar
 bool RTL8111::initRTL8111()
 {
     struct rtl8168_private *tp = &linuxData;
-    UInt32 i;
+    UInt32 i, csi_tmp;
     UInt16 mac_addr[4];
+    UInt8 options1, options2;
     bool result = false;
-        
+    bool wol;
+
     /* Identify chip attached to board. */
 	rtl8168_get_mac_version(tp, baseAddr);
     
     if (tp->mcfg == CFG_METHOD_DEFAULT) {
+        DebugLog("Ethernet [RealtekRTL8111]: Retry chip recognition.\n");
+        
         /* In case chip recognition failed clear corresponding bits... */
         WriteReg32(TxConfig, ReadReg32(TxConfig) & ~0x7CF00000);
         
@@ -2067,7 +2071,44 @@ bool RTL8111::initRTL8111()
     /* Get the RxConfig parameters. */
     rxConfigReg = rtl_chip_info[tp->chipset].RCR_Cfg;
     rxConfigMask = rtl_chip_info[tp->chipset].RxConfigMask;
+
     rtl8168_get_hw_wol(tp);
+
+    options1 = ReadReg8(Config3);
+	options2 = ReadReg8(Config5);
+	csi_tmp = rtl8168_eri_read(baseAddr, 0xDE, 4, ERIAR_ExGMAC);
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_16:
+        case CFG_METHOD_17:
+        case CFG_METHOD_18:
+        case CFG_METHOD_19:
+        case CFG_METHOD_20:
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+        case CFG_METHOD_23:
+        case CFG_METHOD_24:
+            wol = ((options1 & LinkUp) || (csi_tmp & BIT_0) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF)) ? true : false;
+            break;
+            
+        case CFG_METHOD_DEFAULT:
+            wol = false;
+            break;
+            
+        default:
+            wol = ((options1 & LinkUp) || (options1 & MagicPacket) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF)) ? true : false;
+            break;
+    }
+    /* Set wake on LAN support. */
+    wolCapable = wolCapable && wol;
+
+#ifdef DEBUG
+    
+    if (wolCapable)
+        IOLog("Ethernet [RealtekRTL8111]: Device is WoL capable.\n");
+
+#endif
+    
     result = true;
     
 done:
@@ -2084,7 +2125,7 @@ void RTL8111::enableRTL8111()
     rtl8168_powerup_pll(tp);
     rtl8168_hw_ephy_config(tp);
     rtl8168_hw_phy_config(tp);
-	startRTL8111();
+	startRTL8111(intrMitigateValue, true);
 	rtl8168_dsm(tp, DSM_IF_UP);
 	rtl8168_set_speed(tp, autoneg, speed, duplex);
 }
@@ -2120,7 +2161,7 @@ void RTL8111::restartRTL8111()
         
     /* Reset NIC and cleanup both descriptor rings. */
     rtl8168_nic_reset(&linuxData);
-    txClearDescriptors(true);
+    txClearDescriptors();
     rxInterrupt();
     rxNextDescIndex = 0;
     deadlockWarn = 0;
@@ -2129,13 +2170,12 @@ void RTL8111::restartRTL8111()
     enableRTL8111();
 }
 
-void RTL8111::startRTL8111()
+void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
 {
     struct rtl8168_private *tp = &linuxData;
     UInt32 csi_tmp;
     UInt16 mac_ocp_data;
-    UInt8 device_control, options1, options2;
-    bool wol;
+    UInt8 device_control;
     
 	WriteReg32(RxConfig, RxCfg_128_int_en | (RX_DMA_BURST << RxCfgDMAShift));
     
@@ -2172,18 +2212,19 @@ void RTL8111::startRTL8111()
     
     /* The original value 0x5f51 seems to cause performance issues with SMB. */
     /* WriteReg16(IntrMitigate, 0x5f51); */
-    WriteReg16(IntrMitigate, intrMitigateValue);
+    WriteReg16(IntrMitigate, newIntrMitigate);
 
 	WriteReg8(Config5, ReadReg8(Config5) & ~BIT_7);
-/*
-	//Work around for RxFIFO overflow
-	if (tp->mcfg == CFG_METHOD_1) {
-		rtl8168_intr_mask |= RxFIFOOver | PCSTimeout;
-		rtl8168_intr_mask &= ~RxDescUnavail;
-	}
-*/    
-    fillDescriptorAddr(baseAddr, txPhyAddr, rxPhyAddr);
-    
+
+    txNextDescIndex = txDirtyDescIndex = 0;
+    txNumFreeDesc = kNumTxDesc;
+    rxNextDescIndex = 0;
+
+    WriteReg32(TxDescStartAddrLow, (txPhyAddr & 0x00000000ffffffff));
+    WriteReg32(TxDescStartAddrHigh, (txPhyAddr >> 32));
+    WriteReg32(RxDescAddrLow, (rxPhyAddr & 0x00000000ffffffff));
+    WriteReg32(RxDescAddrHigh, (rxPhyAddr >> 32));
+
 	/* Set DMA burst size and Interframe Gap Time */
 	if (tp->mcfg == CFG_METHOD_1)
 		WriteReg32(TxConfig, (TX_DMA_BURST_512 << TxDMAShift) |
@@ -2215,7 +2256,6 @@ void RTL8111::startRTL8111()
         setOffset79(0x50);
 
     } else if (tp->mcfg == CFG_METHOD_5) {
-        
         set_offset70F(tp, 0x27);
         
         WriteReg8(Config3, ReadReg8(Config3) & ~Beacon_en);
@@ -2266,7 +2306,6 @@ void RTL8111::startRTL8111()
         setOffset79(0x50);
 
     } else if (tp->mcfg == CFG_METHOD_8) {
-        
         set_offset70F(tp, 0x27);
         
         rtl8168_eri_write(baseAddr, 0x1EC, 1, 0x07, ERIAR_ASF);
@@ -2334,7 +2373,6 @@ void RTL8111::startRTL8111()
         WriteReg8(Config1, ReadReg8(Config1) | 0x10);
         
     } else if (tp->mcfg == CFG_METHOD_14 || tp->mcfg == CFG_METHOD_15) {
-        
         set_offset70F(tp, 0x27);
         setOffset79(0x50);
         
@@ -2561,6 +2599,10 @@ void RTL8111::startRTL8111()
         csi_tmp |= BIT_1;
         rtl8168_eri_write(baseAddr, 0x1D0, 1, csi_tmp, ERIAR_ExGMAC);
         
+        /* Disable L2/L3 PCIe link state. */
+        if (tp->mcfg == CFG_METHOD_21)
+            WriteReg8(Config3, ReadReg8(Config3) &  ~RDY_TO_L23);
+        
     } else if (tp->mcfg == CFG_METHOD_23 || tp->mcfg == CFG_METHOD_27) {
         set_offset70F(tp, 0x17);
         setOffset79(0x50);
@@ -2764,38 +2806,11 @@ void RTL8111::startRTL8111()
             break;
     }    
     WriteReg8(Cfg9346, Cfg9346_Lock);
-        
-    /* Enable all known interrupts by setting the interrupt mask. */
-    WriteReg16(IntrMask, intrMask);
-
-	options1 = ReadReg8(Config3);
-	options2 = ReadReg8(Config5);
-	csi_tmp = rtl8168_eri_read(baseAddr, 0xDE, 4, ERIAR_ExGMAC);
     
-    switch (tp->mcfg) {
-        case CFG_METHOD_16:
-        case CFG_METHOD_17:
-        case CFG_METHOD_18:
-        case CFG_METHOD_19:
-        case CFG_METHOD_20:
-        case CFG_METHOD_21:
-        case CFG_METHOD_22:
-        case CFG_METHOD_23:
-        case CFG_METHOD_24:
-            wol = ((options1 & LinkUp) || (csi_tmp & BIT_0) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF)) ? true : false;
-            break;
-            
-        case CFG_METHOD_DEFAULT:
-            wol = false;
-            break;
-            
-        default:
-            wol = ((options1 & LinkUp) || (options1 & MagicPacket) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF)) ? true : false;
-            break;
+    if (enableInterrupts) {
+        /* Enable all known interrupts by setting the interrupt mask. */
+        WriteReg16(IntrMask, intrMask);
     }
-    /* Set wake on LAN support and status. */
-    wolCapable = wolCapable && wol;
-    tp->wol_enabled = (wolCapable && wolActive) ? WOL_ENABLED : WOL_DISABLED;
 	udelay(10);
 }
 
@@ -3011,7 +3026,7 @@ void RTL8111::timerActionRTL8111C(IOTimerEventSource *timer)
     if (checkForDeadlock())
         goto done;
     
-    dumpTallyCounter();
+    updateStatitics();
     timerSource->setTimeoutMS(kTimeoutMS);
     
     /* We can savely free the mbuf here because the timer action gets called
@@ -3055,19 +3070,17 @@ void RTL8111::timerActionRTL8111B(IOTimerEventSource *timer)
 	newLinkState = (currLinkState & LinkStatus) ? true : false;
     
     if (newLinkState != linkUp) {
-        if (newLinkState) {
+        if (newLinkState)
             setLinkUp(currLinkState);
-            WriteReg8(ChipCmd, CmdRxEnb | CmdTxEnb);
-        } else {
+        else
             setLinkDown();
-        }
     }
     /* Check for tx deadlock. */
     if (linkUp) {
         if (checkForDeadlock())
             goto done;
         
-        dumpTallyCounter();
+        updateStatitics();
     }
     /* We can savely free the mbuf here because the timer action gets called
      * synchronized to the workloop.
@@ -3085,14 +3098,6 @@ done:
 }
 
 #pragma mark --- miscellaneous functions ---
-
-static inline void fillDescriptorAddr(volatile void *baseAddr, IOPhysicalAddress64 txPhyAddr, IOPhysicalAddress64 rxPhyAddr)
-{
-    WriteReg32(TxDescStartAddrLow, (txPhyAddr & 0x00000000ffffffff));
-    WriteReg32(TxDescStartAddrHigh, (txPhyAddr >> 32));
-    WriteReg32(RxDescAddrLow, (rxPhyAddr & 0x00000000ffffffff));
-    WriteReg32(RxDescAddrHigh, (rxPhyAddr >> 32));
-}
 
 static unsigned const ethernet_polynomial = 0x04c11db7U;
 

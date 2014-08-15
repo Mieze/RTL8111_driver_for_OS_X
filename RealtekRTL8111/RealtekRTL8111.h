@@ -80,7 +80,7 @@ typedef struct RtlStatData {
 	UInt16	txUnderun;
 } RtlStatData;
 
-#define kTransmitQueueCapacity  4096
+#define kTransmitQueueCapacity  1024
 
 /* With up to 40 segments we should be on the save side. */
 #define kMaxSegs 40
@@ -146,6 +146,8 @@ enum
 #define kEnableCSO6Name "enableCSO6"
 #define kEnableTSO4Name "enableTSO4"
 #define kIntrMitigateName "intrMitigate"
+#define kDisableASPMName "disableASPM"
+#define kDriverVersionName "Driver_Version"
 #define kNameLenght 64
 
 extern const struct RTLChipInfo rtl_chip_info[];
@@ -213,19 +215,18 @@ private:
     void rxInterrupt();
     bool setupDMADescriptors();
     void freeDMADescriptors();
-    void txClearDescriptors(bool withReset);
+    void txClearDescriptors();
     void checkLinkStatus();
     void updateStatitics();
     void setLinkUp(UInt8 linkState);
     void setLinkDown();
     bool checkForDeadlock();
-    void dumpTallyCounter();
 
     /* Hardware initialization methods. */
     bool initRTL8111();
     void enableRTL8111();
     void disableRTL8111();
-    void startRTL8111();
+    void startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts);
     void setOffset79(UInt8 setting);
     void restartRTL8111();
     
@@ -294,7 +295,6 @@ private:
     IOPhysicalAddress64 statPhyAddr;
     struct RtlStatData *statData;
 
-    UInt32 unitNumber;
     UInt32 mtu;
     UInt32 speed;
     UInt32 duplex;
@@ -321,6 +321,7 @@ private:
     bool revisionC;
     bool enableTSO4;
     bool enableCSO6;
+    bool disableASPM;
     
     /* mbuf_t arrays */
     mbuf_t txMbufArray[kNumTxDesc];

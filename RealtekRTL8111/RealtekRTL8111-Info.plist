@@ -28,6 +28,14 @@
 		<dict>
 			<key>CFBundleIdentifier</key>
 			<string>com.insanelymac.${PRODUCT_NAME:rfc1034identifier}</string>
+			<key>IOClass</key>
+			<string>RTL8111</string>
+			<key>IOProviderClass</key>
+			<string>IOPCIDevice</string>
+			<key>IOProbeScore</key>
+			<integer>1000</integer>
+			<key>IOPCIMatch</key>
+			<string>0x816810ec 0x81681186</string>
 			<key>Model</key>
 			<string>RTL8111</string>
 			<key>Vendor</key>
@@ -38,16 +46,12 @@
 			<true/>
 			<key>enableCSO6</key>
 			<true/>
+			<key>disableASPM</key>
+			<true/>
 			<key>intrMitigate</key>
-			<integer>53096</integer>
-			<key>IOClass</key>
-			<string>RTL8111</string>
-			<key>IOPCIMatch</key>
-			<string>0x816810ec 0x81681186</string>
-			<key>IOProbeScore</key>
-			<integer>1000</integer>
-			<key>IOProviderClass</key>
-			<string>IOPCIDevice</string>
+			<integer>53080</integer>
+			<key>Driver_Version</key>
+			<string>$MODULE_VERSION</string>
 		</dict>
 	</dict>
 	<key>NSHumanReadableCopyright</key>
