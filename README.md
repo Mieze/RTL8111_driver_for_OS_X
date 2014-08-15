@@ -48,6 +48,11 @@ Current status
 The driver has been successfully tested under 10.8.2 - 10.8.5 and 10.9 with the D (chipset 9), E (chipset 16) and F (chipset 17) versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are 25 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
 
 Changelog
+
+- Version 1.2.2 (2014-08-44):
+    - Added an option to disable ASPM (default disabled) as it seems to result in unstable operation of some chipsets.
+    - Resolved a problem with Link Aggregation after reboot.
+    - Added a workaround for the Multicast filter bug of chipset 17 (RTL8111F) which prevented Bonjour from working properly.
 - Version 1.0.1 (2013-03-31):
     - Improved behavior when rx checksum offload isn't working properly.
     - Adds the chipset's model name to IORegistry so that it will show up in System Profiler.
