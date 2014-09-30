@@ -23,6 +23,8 @@
 
 #pragma mark --- function prototypes ---
 
+static inline UInt32 adjustIPv6Header(mbuf_t m);
+
 static inline u32 ether_crc(int length, unsigned char *data);
 
 #pragma mark --- public methods ---
@@ -133,6 +135,7 @@ bool RTL8111::start(IOService *provider)
     OSNumber *intrMit;
     OSBoolean *enableEEE;
     OSBoolean *tso4;
+    OSBoolean *tso6;
     OSBoolean *csoV6;
     OSBoolean *noASPM;
     OSString *versionString;
@@ -183,6 +186,11 @@ bool RTL8111::start(IOService *provider)
     enableTSO4 = (tso4) ? tso4->getValue() : false;
     
     IOLog("Ethernet [RealtekRTL8111]: TCP/IPv4 segmentation offload %s.\n", enableTSO4 ? onName : offName);
+    
+    tso6 = OSDynamicCast(OSBoolean, getProperty(kEnableTSO6Name));
+    enableTSO6 = (tso6) ? tso6->getValue() : false;
+    
+    IOLog("Ethernet [RealtekRTL8111]: TCP/IPv6 segmentation offload %s.\n", enableTSO6 ? onName : offName);
     
     csoV6 = OSDynamicCast(OSBoolean, getProperty(kEnableCSO6Name));
     enableCSO6 = (csoV6) ? csoV6->getValue() : false;
@@ -446,14 +454,13 @@ UInt32 RTL8111::outputPacket(mbuf_t m, void *param)
     IOPhysicalSegment txSegments[kMaxSegs];
     RtlDmaDesc *desc, *firstDesc;
     UInt32 result = kIOReturnOutputDropped;
+    UInt32 cmd = 0;
+    UInt32 opts2 = 0;
     mbuf_tso_request_flags_t tsoFlags;
     mbuf_csum_request_flags_t checksums;
     UInt32 mssValue;
-    UInt32 cmd;
     UInt32 opts1;
-    UInt32 opts2;
     UInt32 vlanTag;
-    UInt32 csumData;
     UInt32 numSegs;
     UInt32 lastSeg;
     UInt32 index;
@@ -476,11 +483,18 @@ UInt32 RTL8111::outputPacket(mbuf_t m, void *param)
         DebugLog("Ethernet [RealtekRTL8111]: mbuf_get_tso_requested() failed. Dropping packet.\n");
         goto error;
     }
-    if (tsoFlags && (mbuf_pkthdr_len(m) <= ETH_FRAME_LEN)) {
-        checksums = (tsoFlags & MBUF_TSO_IPV4) ? (kChecksumTCP | kChecksumIP): kChecksumTCPIPv6;
-        tsoFlags = 0;
+    if (tsoFlags & (MBUF_TSO_IPV4 | MBUF_TSO_IPV6)) {
+        if (tsoFlags & MBUF_TSO_IPV4) {
+            getTso4Command(&cmd, &opts2, mssValue, tsoFlags);
+        } else {
+            /* The pseudoheader checksum has to be adjusted first. */
+            adjustIPv6Header(m);
+            getTso6Command(&cmd, &opts2, mssValue, tsoFlags);
+        }
     } else {
-        mbuf_get_csum_requested(m, &checksums, &csumData);
+        /* We use mssValue as a dummy here because it isn't needed anymore. */
+        mbuf_get_csum_requested(m, &checksums, &mssValue);
+        getChecksumCommand(&cmd, &opts2, checksums);
     }
     /* Alloc required number of descriptors. As the descriptor which has been freed last must be
      * considered to be still in use we never fill the ring completely but leave at least one
@@ -497,13 +511,9 @@ UInt32 RTL8111::outputPacket(mbuf_t m, void *param)
     txNextDescIndex = (txNextDescIndex + numSegs) & kTxDescMask;
     firstDesc = &txDescArray[index];
     lastSeg = numSegs - 1;
-    cmd = 0;
     
-    /* First fill in the VLAN tag. */
-    opts2 = (getVlanTagDemand(m, &vlanTag)) ? (OSSwapInt16(vlanTag) | TxVlanTag) : 0;
-    
-    /* Next setup the checksum and TSO command bits. */
-    getDescCommand(&cmd, &opts2, checksums, mssValue, tsoFlags);
+    /* Next fill in the VLAN tag. */
+    opts2 |= (getVlanTagDemand(m, &vlanTag)) ? (OSSwapInt16(vlanTag) | TxVlanTag) : 0;
     
     /* And finally fill in the descriptors. */
     for (i = 0; i < numSegs; i++) {
@@ -767,31 +777,21 @@ IOReturn RTL8111::getChecksumSupport(UInt32 *checksumMask, UInt32 checksumFamily
     return result;
 }
 
-IOReturn RTL8111::setMaxPacketSize (UInt32 maxSize)
+UInt32 RTL8111::getFeatures() const
 {
-    IOReturn result = kIOReturnUnsupported;
+    UInt32 features = (kIONetworkFeatureMultiPages | kIONetworkFeatureHardwareVlan);
     
-done:
-    return result;
-}
-
-IOReturn RTL8111::getMaxPacketSize (UInt32 *maxSize) const
-{
-    IOReturn result = kIOReturnBadArgument;
+    DebugLog("getFeatures() ===>\n");
     
-    if (maxSize) {
-        *maxSize = mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
-        result = kIOReturnSuccess;
-    }
-    return result;
-}
-
-IOReturn RTL8111::getMinPacketSize (UInt32 *minSize) const
-{
-    IOReturn result = super::getMinPacketSize(minSize);
+    if (enableTSO4)
+        features |= kIONetworkFeatureTSOIPv4;
     
-done:
-    return result;
+    if (enableTSO6 && revisionC)
+        features |= kIONetworkFeatureTSOIPv6;
+    
+    DebugLog("getFeatures() <===\n");
+    
+    return features;
 }
 
 IOReturn RTL8111::setWakeOnMagicPacket(bool active)
@@ -827,15 +827,6 @@ IOReturn RTL8111::getPacketFilters(const OSSymbol *group, UInt32 *filters) const
     DebugLog("getPacketFilters() <===\n");
 
     return result;
-}
-
-
-UInt32 RTL8111::getFeatures() const
-{
-    DebugLog("getFeatures() ===>\n");
-    DebugLog("getFeatures() <===\n");
-
-    return (enableTSO4) ? (kIONetworkFeatureMultiPages | kIONetworkFeatureHardwareVlan | kIONetworkFeatureTSOIPv4) : (kIONetworkFeatureMultiPages | kIONetworkFeatureHardwareVlan);
 }
 
 IOReturn RTL8111::setHardwareAddress(const IOEthernetAddress *addr)
@@ -1567,7 +1558,7 @@ bool RTL8111::checkForDeadlock()
 }
 
 #pragma mark --- hardware specific methods ---
-
+/*
 void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags)
 {
     if (revisionC) {
@@ -1582,16 +1573,16 @@ void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags
             else if (checksums & kChecksumIP)
                 *cmd2 |= TxIPCS_C;
             else if (checksums & kChecksumTCPIPv6)
-                *cmd2 |= (TxTCPCS_C | TxIPV6_C | ((kMinL4HdrOffset & L4OffMask) << MSSShift_C));
+                *cmd2 |= (TxTCPCS_C | TxIPV6_C | ((kMinL4HdrOffsetV6 & L4OffMask) << MSSShift_C));
             else if (checksums & kChecksumUDPIPv6)
-                *cmd2 |= (TxUDPCS_C | TxIPV6_C | ((kMinL4HdrOffset & L4OffMask) << MSSShift_C));
+                *cmd2 |= (TxUDPCS_C | TxIPV6_C | ((kMinL4HdrOffsetV6 & L4OffMask) << MSSShift_C));
         }
     } else {
         if (tsoFlags & MBUF_TSO_IPV4) {
-            /* This is a TSO operation so that there are no checksum command bits. */
+            // This is a TSO operation so that there are no checksum command bits.
             *cmd1 = (LargeSend |((mssValue & MSSMask) << MSSShift));
         } else {
-            /* Setup the checksum command bits. */
+            // Setup the checksum command bits.
             if (checksums & kChecksumTCP)
                 *cmd1 = (TxIPCS | TxTCPCS);
             else if (checksums & kChecksumUDP)
@@ -1599,6 +1590,46 @@ void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags
             else if (checksums & kChecksumIP)
                 *cmd1 = TxIPCS;
         }
+    }
+}
+*/
+void RTL8111::getTso4Command(UInt32 *cmd1, UInt32 *cmd2, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags)
+{
+    if (revisionC) {
+        *cmd1 = (GSendV4 | (kMinL4HdrOffsetV4 << GSendL4OffShift));
+        *cmd2 = ((mssValue & MSSMask) << MSSShift_C);
+    } else {
+        *cmd1 = (LargeSend |((mssValue & MSSMask) << MSSShift));
+    }
+}
+
+void RTL8111::getTso6Command(UInt32 *cmd1, UInt32 *cmd2, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags)
+{
+    *cmd1 = (GSendV6 | (kMinL4HdrOffsetV6 << GSendL4OffShift));
+    *cmd2 = ((mssValue & MSSMask) << MSSShift_C);
+}
+
+void RTL8111::getChecksumCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums)
+{
+    if (revisionC) {
+        if (checksums & kChecksumTCP)
+            *cmd2 = (TxIPCS_C | TxTCPCS_C);
+        else if (checksums & kChecksumUDP)
+            *cmd2 = (TxIPCS_C | TxUDPCS_C);
+        else if (checksums & kChecksumIP)
+            *cmd2 = TxIPCS_C;
+        else if (checksums & kChecksumTCPIPv6)
+            *cmd2 = (TxTCPCS_C | TxIPV6_C | ((kMinL4HdrOffsetV6 & L4OffMask) << MSSShift_C));
+        else if (checksums & kChecksumUDPIPv6)
+            *cmd2 = (TxUDPCS_C | TxIPV6_C | ((kMinL4HdrOffsetV6 & L4OffMask) << MSSShift_C));
+    } else {
+        /* Setup the checksum command bits. */
+        if (checksums & kChecksumTCP)
+            *cmd1 = (TxIPCS | TxTCPCS);
+        else if (checksums & kChecksumUDP)
+            *cmd1 = (TxIPCS | TxUDPCS);
+        else if (checksums & kChecksumIP)
+            *cmd1 = TxIPCS;
     }
 }
 
@@ -2065,9 +2096,8 @@ bool RTL8111::initRTL8111()
           origMacAddr.bytes[4], origMacAddr.bytes[5]);
     
     tp->cp_cmd = ReadReg16(CPlusCmd);
-    
     intrMask = (revisionC) ? (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK) : (SYSErr | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
-    
+
     /* Get the RxConfig parameters. */
     rxConfigReg = rtl_chip_info[tp->chipset].RCR_Cfg;
     rxConfigMask = rtl_chip_info[tp->chipset].RxConfigMask;
@@ -3098,6 +3128,20 @@ done:
 }
 
 #pragma mark --- miscellaneous functions ---
+
+static inline UInt32 adjustIPv6Header(mbuf_t m)
+{
+    struct ip6_hdr *ip6Hdr = (struct ip6_hdr *)((UInt8 *)mbuf_data(m) + ETHER_HDR_LEN);
+    struct tcphdr *tcpHdr = (struct tcphdr *)((UInt8 *)ip6Hdr + sizeof(struct ip6_hdr));
+    UInt32 plen = ntohs(ip6Hdr->ip6_ctlun.ip6_un1.ip6_un1_plen);
+    UInt32 csum = ntohs(tcpHdr->th_sum) - plen;
+    
+    csum += (csum >> 16);
+    ip6Hdr->ip6_ctlun.ip6_un1.ip6_un1_plen = 0;
+    tcpHdr->th_sum = htons((UInt16)csum);
+    
+    return (plen + kMinL4HdrOffsetV6);
+}
 
 static unsigned const ethernet_polynomial = 0x04c11db7U;
 

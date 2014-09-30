@@ -44,6 +44,8 @@
 			<true/>
 			<key>enableTSO4</key>
 			<true/>
+			<key>enableTSO6</key>
+			<true/>
 			<key>enableCSO6</key>
 			<true/>
 			<key>disableASPM</key>

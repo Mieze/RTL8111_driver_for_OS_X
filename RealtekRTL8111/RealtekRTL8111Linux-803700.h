@@ -1105,6 +1105,10 @@ enum _DescStatusBit {
     /* Tx private */
     /*------ offset 0 of tx descriptor ------*/
     LargeSend   = (1 << 27), /* TCP Large Send Offload (TSO) */
+    GSendV4     = (1 << 26),		/* Giant Send for IPv4 */
+    GSendV6     = (1 << 25),		/* Giant Send for IPv6 */
+    GSendL4OffShift = 18,
+    GSendL4OffMask  = 0x7fU,
     LargeSend_DP = (1 << 16), /* TCP Large Send Offload (TSO) */
     MSSShift    = 16,        /* MSS value position */
     MSSMask     = 0x7FFU,    /* MSS value 11 bits */
