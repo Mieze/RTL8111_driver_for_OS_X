@@ -12,7 +12,7 @@ Key Features of the Driver
 - Support for multisegment packets relieving the network stack of unnecessary copy operations when assembling packets for transmission.
 - No-copy receive and transmit. Only small packets are copied on reception because creating a copy is more efficient than allocating a new buffer.
 TCP, UDP and IPv4 checksum offload (receive and transmit).
-- TCP segmentation offload under IPv4.
+- TCP segmentation offload over IPv4 and IPv6.
 - Support for TCP/IPv6 and UDP/IPv6 checksum offload.
 - Fully optimized for Mountain Lion (64bit architecture) but should work with Lion too. Snow Leopard requies some changes.
 - Supports Wake on LAN.
