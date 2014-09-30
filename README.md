@@ -49,7 +49,9 @@ The driver has been successfully tested under 10.8.2 - 10.8.5 and 10.9 with the 
 
 Changelog
 
-- Version 1.2.2 (2014-08-44):
+- Version 1.2.3 (2014-08-23):
+    - Reworked TSO4 and added support for TSO6.
+- Version 1.2.2 (2014-08-14):
     - Added an option to disable ASPM (default disabled) as it seems to result in unstable operation of some chipsets.
     - Resolved a problem with Link Aggregation after reboot.
     - Added a workaround for the Multicast filter bug of chipset 17 (RTL8111F) which prevented Bonjour from working properly.
