@@ -44,7 +44,9 @@ enum
 	MEDIUM_INDEX_10FD,
 	MEDIUM_INDEX_100HD,
 	MEDIUM_INDEX_100FD,
+	MEDIUM_INDEX_100FDFC,
 	MEDIUM_INDEX_1000FD,
+	MEDIUM_INDEX_1000FDFC,
 	MEDIUM_INDEX_COUNT
 };
 
@@ -105,6 +107,9 @@ typedef struct RtlStatData {
 
 /* Treshhold value in ns for the modified interrupt sequence. */
 #define kFastIntrTreshhold 200000
+
+/* Treshhold value to wake a stalled queue */
+#define kTxQueueWakeTreshhold (kNumTxDesc / 8)
 
 /* transmitter deadlock treshhold in seconds. */
 #define kTxDeadlockTreshhold 3
@@ -176,7 +181,11 @@ public:
 	virtual IOReturn enable(IONetworkInterface *netif);
 	virtual IOReturn disable(IONetworkInterface *netif);
 	
-	virtual UInt32 outputPacket(mbuf_t m, void *param);
+#ifdef __PRIVATE_SPI__
+    virtual IOReturn outputStart(IONetworkInterface *interface, IOOptionBits options );
+#else
+    virtual UInt32 outputPacket(mbuf_t m, void *param);
+#endif /* __PRIVATE_SPI__ */
 	
 	virtual void getPacketBufferConstraints(IOPacketBufferConstraints *constraints) const;
 	
@@ -314,7 +323,11 @@ private:
 	bool promiscusMode;
 	bool multicastMode;
     bool linkUp;
+    
+#ifndef __PRIVATE_SPI__
     bool stalled;
+#endif /* __PRIVATE_SPI__ */
+    
     bool useMSI;
     bool needsUpdate;
     bool wolCapable;

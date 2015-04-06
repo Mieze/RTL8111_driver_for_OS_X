@@ -62,7 +62,11 @@ bool RTL8111::init(OSDictionary *properties)
         promiscusMode = false;
         multicastMode = false;
         linkUp = false;
+        
+#ifndef __PRIVATE_SPI__
         stalled = false;
+#endif /* __PRIVATE_SPI__ */
+        
         useMSI = false;
         mtu = ETH_DATA_LEN;
         powerState = 0;
@@ -391,9 +395,12 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     txDescDoneCount = txDescDoneLast = 0;
     deadlockWarn = 0;
     needsUpdate = false;
-    txQueue->setCapacity(kTransmitQueueCapacity);
     isEnabled = true;
+    
+#ifndef __PRIVATE_SPI__
+    txQueue->setCapacity(kTransmitQueueCapacity);
     stalled = false;
+#endif /* __PRIVATE_SPI__ */
 
     if (!revisionC)
         timerSource->setTimeoutMS(kTimeoutMS);
@@ -415,11 +422,17 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
     if (!isEnabled)
         goto done;
     
+#ifdef __PRIVATE_SPI__
+    netif->stopOutputThread();
+    netif->flushOutputQueue();
+#else
     txQueue->stop();
     txQueue->flush();
     txQueue->setCapacity(0);
-    isEnabled = false;
     stalled = false;
+#endif /* __PRIVATE_SPI__ */
+
+    isEnabled = false;
 
     timerSource->cancelTimeout();
     needsUpdate = false;
@@ -448,6 +461,111 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
 done:
     return result;
 }
+
+#ifdef __PRIVATE_SPI__
+
+IOReturn AtherosE2200::outputStart(IONetworkInterface *interface, IOOptionBits options )
+{
+    IOPhysicalSegment txSegments[kMaxSegs];
+    RtlDmaDesc *desc, *firstDesc;
+    IOReturn result = kIOReturnNoResources;
+    UInt32 cmd;
+    UInt32 opts2;
+    mbuf_tso_request_flags_t tsoFlags;
+    mbuf_csum_request_flags_t checksums;
+    UInt32 mssValue;
+    UInt32 opts1;
+    UInt32 vlanTag;
+    UInt32 numSegs;
+    UInt32 lastSeg;
+    UInt32 index;
+    UInt32 i;
+    
+    //DebugLog("outputStart() ===>\n");
+    
+    if (!(isEnabled && linkUp)) {
+        DebugLog("Ethernet [RealtekRTL8111]: Interface down. Dropping packets.\n");
+        goto done;
+    }
+    while ((txNumFreeDesc > (kMaxSegs + 3)) && (interface->dequeueOutputPackets(1, &m, NULL, NULL, NULL) == kIOReturnSuccess)) {
+        cmd = 0;
+        opts2 = 0;
+
+        if (mbuf_get_tso_requested(m, &tsoFlags, &mssValue)) {
+            DebugLog("Ethernet [RealtekRTL8111]: mbuf_get_tso_requested() failed. Dropping packet.\n");
+            freePacket(m);
+            continue;
+        }
+        if (tsoFlags & (MBUF_TSO_IPV4 | MBUF_TSO_IPV6)) {
+            if (tsoFlags & MBUF_TSO_IPV4) {
+                getTso4Command(&cmd, &opts2, mssValue, tsoFlags);
+            } else {
+                /* The pseudoheader checksum has to be adjusted first. */
+                adjustIPv6Header(m);
+                getTso6Command(&cmd, &opts2, mssValue, tsoFlags);
+            }
+        } else {
+            /* We use mssValue as a dummy here because it isn't needed anymore. */
+            mbuf_get_csum_requested(m, &checksums, &mssValue);
+            getChecksumCommand(&cmd, &opts2, checksums);
+        }
+        /* Finally get the physical segments. */
+        numSegs = txMbufCursor->getPhysicalSegmentsWithCoalesce(m, &txSegments[0], kMaxSegs);
+
+        /* Alloc required number of descriptors. As the descriptor which has been freed last must be
+         * considered to be still in use we never fill the ring completely but leave at least one
+         * unused.
+         */
+        if (!numSegs) {
+            DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed. Dropping packet.\n");
+            freePacket(m);
+            continue;
+        }
+        OSAddAtomic(-numSegs, &txNumFreeDesc);
+        index = txNextDescIndex;
+        txNextDescIndex = (txNextDescIndex + numSegs) & kTxDescMask;
+        firstDesc = &txDescArray[index];
+        lastSeg = numSegs - 1;
+        
+        /* Next fill in the VLAN tag. */
+        opts2 |= (getVlanTagDemand(m, &vlanTag)) ? (OSSwapInt16(vlanTag) | TxVlanTag) : 0;
+        
+        /* And finally fill in the descriptors. */
+        for (i = 0; i < numSegs; i++) {
+            desc = &txDescArray[index];
+            opts1 = (((UInt32)txSegments[i].length) | cmd);
+            opts1 |= (i == 0) ? FirstFrag : DescOwn;
+            
+            if (i == lastSeg) {
+                opts1 |= LastFrag;
+                txMbufArray[index] = m;
+            } else {
+                txMbufArray[index] = NULL;
+            }
+            if (index == kTxLastDesc)
+                opts1 |= RingEnd;
+            
+            desc->addr = OSSwapHostToLittleInt64(txSegments[i].location);
+            desc->opts2 = OSSwapHostToLittleInt32(opts2);
+            desc->opts1 = OSSwapHostToLittleInt32(opts1);
+            
+            //DebugLog("opts1=0x%x, opts2=0x%x, addr=0x%llx, len=0x%llx\n", opts1, opts2, txSegments[i].location, txSegments[i].length);
+            ++index &= kTxDescMask;
+        }
+        firstDesc->opts1 |= DescOwn;
+    }
+    /* Set the polling bit. */
+    WriteReg8(TxPoll, NPQ);
+
+    result = (txNumFreeDesc > (kMaxSegs + 3)) ? kIOReturnSuccess : kIOReturnNoResources;
+    
+done:
+    //DebugLog("outputStart() <===\n");
+    
+    return result;
+}
+
+#else
 
 UInt32 RTL8111::outputPacket(mbuf_t m, void *param)
 {
@@ -554,6 +672,8 @@ error:
     goto done;
 }
 
+#endif /* __PRIVATE_SPI__ */
+
 void RTL8111::getPacketBufferConstraints(IOPacketBufferConstraints *constraints) const
 {
     DebugLog("getPacketBufferConstraints() ===>\n");
@@ -594,6 +714,11 @@ bool RTL8111::configureInterface(IONetworkInterface *interface)
 {
     char modelName[kNameLenght];
     IONetworkData *data;
+    
+#ifdef __PRIVATE_SPI__
+    IOReturn error;
+#endif /* __PRIVATE_SPI__ */
+
     bool result;
 
     DebugLog("configureInterface() ===>\n");
@@ -627,6 +752,16 @@ bool RTL8111::configureInterface(IONetworkInterface *interface)
             goto done;
         }
     }
+#ifdef __PRIVATE_SPI__
+    error = interface->configureOutputPullModel(512, 0, 0, IONetworkInterface::kOutputPacketSchedulingModelNormal);
+    
+    if (error != kIOReturnSuccess) {
+        IOLog("Ethernet [RealtekRTL8111]: configureOutputPullModel() failed\n.");
+        result = false;
+        goto done;
+    }
+#endif /* __PRIVATE_SPI__ */
+
     snprintf(modelName, kNameLenght, "Realtek %s PCI Express Gigabit Ethernet", rtl_chip_info[linuxData.chipset].name);
     setProperty("model", modelName);
     
@@ -884,8 +1019,20 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 duplex = DUPLEX_FULL;
                 break;
                 
+            case MEDIUM_INDEX_100FDFC:
+                autoneg = AUTONEG_ENABLE;
+                speed = SPEED_100;
+                duplex = DUPLEX_FULL;
+                break;
+                
             case MEDIUM_INDEX_1000FD:
                 autoneg = AUTONEG_DISABLE;
+                speed = SPEED_1000;
+                duplex = DUPLEX_FULL;
+                break;
+                
+            case MEDIUM_INDEX_1000FDFC:
+                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
                 break;
@@ -908,7 +1055,9 @@ static IOMediumType mediumTypeArray[MEDIUM_INDEX_COUNT] = {
     (kIOMediumEthernet10BaseT | kIOMediumOptionFullDuplex),
     (kIOMediumEthernet100BaseTX | kIOMediumOptionHalfDuplex),
     (kIOMediumEthernet100BaseTX | kIOMediumOptionFullDuplex),
-    (kIOMediumEthernet1000BaseT | kIOMediumOptionFullDuplex)
+    (kIOMediumEthernet100BaseTX | kIOMediumOptionFullDuplex | kIOMediumOptionFlowControl),
+    (kIOMediumEthernet1000BaseT | kIOMediumOptionFullDuplex),
+    (kIOMediumEthernet1000BaseT | kIOMediumOptionFullDuplex | kIOMediumOptionFlowControl)
 };
 
 static UInt32 mediumSpeedArray[MEDIUM_INDEX_COUNT] = {
@@ -917,6 +1066,8 @@ static UInt32 mediumSpeedArray[MEDIUM_INDEX_COUNT] = {
     10 * MBit,
     100 * MBit,
     100 * MBit,
+    100 * MBit,
+    1000 * MBit,
     1000 * MBit
 };
 
@@ -1310,11 +1461,17 @@ void RTL8111::txInterrupt()
         OSIncrementAtomic(&txNumFreeDesc);
         ++txDirtyDescIndex &= kTxDescMask;
     }
-    if (stalled && (txNumFreeDesc > kMaxSegs)) {
+#ifdef __PRIVATE_SPI__
+    if (txNumFreeDesc > kTxQueueWakeTreshhold)
+        netif->signalOutputThread();
+#else
+    if (stalled && (txNumFreeDesc > kTxQueueWakeTreshhold)) {
         DebugLog("Ethernet [RealtekRTL8111]: Restart stalled queue!\n");
         txQueue->service(IOBasicOutputQueue::kServiceAsync);
         stalled = false;
     }
+#endif /* __PRIVATE_SPI__ */
+
     if (oldDirtyIndex != txDirtyDescIndex)
         WriteReg8(TxPoll, NPQ);
     
@@ -1534,7 +1691,7 @@ bool RTL8111::checkForDeadlock()
              * In order to avoid false positives when trying to detect transmitter deadlocks, check
              * the transmitter ring once for completed descriptors before we assume a deadlock. 
              */
-            IOLog("Ethernet [RealtekRTL8111]: Tx timeout. Lost interrupt?\n");
+            DebugLog("Ethernet [RealtekRTL8111]: Tx timeout. Lost interrupt?\n");
             etherStats->dot3TxExtraEntry.timeouts++;
             txInterrupt();
         } else if (deadlockWarn >= kTxDeadlockTreshhold) {
@@ -1558,41 +1715,7 @@ bool RTL8111::checkForDeadlock()
 }
 
 #pragma mark --- hardware specific methods ---
-/*
-void RTL8111::getDescCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags)
-{
-    if (revisionC) {
-        if (tsoFlags & MBUF_TSO_IPV4) {
-            *cmd2 |= (((mssValue & MSSMask) << MSSShift_C) | TxIPCS_C | TxTCPCS_C);
-            *cmd1 = LargeSend;
-        } else {
-            if (checksums & kChecksumTCP)
-                *cmd2 |= (TxIPCS_C | TxTCPCS_C);
-            else if (checksums & kChecksumUDP)
-                *cmd2 |= (TxIPCS_C | TxUDPCS_C);
-            else if (checksums & kChecksumIP)
-                *cmd2 |= TxIPCS_C;
-            else if (checksums & kChecksumTCPIPv6)
-                *cmd2 |= (TxTCPCS_C | TxIPV6_C | ((kMinL4HdrOffsetV6 & L4OffMask) << MSSShift_C));
-            else if (checksums & kChecksumUDPIPv6)
-                *cmd2 |= (TxUDPCS_C | TxIPV6_C | ((kMinL4HdrOffsetV6 & L4OffMask) << MSSShift_C));
-        }
-    } else {
-        if (tsoFlags & MBUF_TSO_IPV4) {
-            // This is a TSO operation so that there are no checksum command bits.
-            *cmd1 = (LargeSend |((mssValue & MSSMask) << MSSShift));
-        } else {
-            // Setup the checksum command bits.
-            if (checksums & kChecksumTCP)
-                *cmd1 = (TxIPCS | TxTCPCS);
-            else if (checksums & kChecksumUDP)
-                *cmd1 = (TxIPCS | TxUDPCS);
-            else if (checksums & kChecksumIP)
-                *cmd1 = TxIPCS;
-        }
-    }
-}
-*/
+
 void RTL8111::getTso4Command(UInt32 *cmd1, UInt32 *cmd2, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags)
 {
     if (revisionC) {
@@ -1743,12 +1866,20 @@ void RTL8111::setLinkUp(UInt8 linkState)
     const char *duplexName;
     const char *flowName;
     UInt16 newIntrMitigate = 0x5f51;
+    bool fc;
     
     /* Get link speed, duplex and flow-control mode. */
+    if (linkState &	(TxFlowCtrl | RxFlowCtrl)) {
+        flowName = onFlowName;
+        fc = true;
+    } else {
+        flowName = offFlowName;
+        fc = false;
+    }
     if (linkState & _1000bpsF) {
+        mediumIndex = fc ? MEDIUM_INDEX_1000FDFC : MEDIUM_INDEX_1000FD;
         mediumSpeed = kSpeed1000MBit;
         speed = SPEED_1000;
-        mediumIndex = MEDIUM_INDEX_1000FD;
         speedName = speed1GName;
         duplexName = duplexFullName;
         newIntrMitigate = intrMitigateValue;
@@ -1758,7 +1889,7 @@ void RTL8111::setLinkUp(UInt8 linkState)
         speedName = speed100MName;
         
         if (linkState & FullDup) {
-            mediumIndex = MEDIUM_INDEX_100FD;
+            mediumIndex = fc ? MEDIUM_INDEX_100FDFC : MEDIUM_INDEX_100FD;
             duplexName = duplexFullName;
         } else {
             mediumIndex = MEDIUM_INDEX_100HD;
@@ -1777,15 +1908,14 @@ void RTL8111::setLinkUp(UInt8 linkState)
             duplexName = duplexHalfName;
         }
     }
-    if (linkState &	(TxFlowCtrl | RxFlowCtrl))
-        flowName = onFlowName;
-    else
-        flowName = offFlowName;
-    
     startRTL8111(newIntrMitigate, false);
     linkUp = true;
     setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, mediumTable[mediumIndex], mediumSpeed, NULL);
     
+#ifdef __PRIVATE_SPI__
+    /* Start output thread, statistics update and watchdog. */
+    netif->startOutputThread();
+#else
     /* Restart txQueue, statistics updates and watchdog. */
     txQueue->start();
     
@@ -1794,6 +1924,8 @@ void RTL8111::setLinkUp(UInt8 linkState)
         stalled = false;
         DebugLog("Ethernet [RealtekRTL8111]: Restart stalled queue!\n");
     }
+#endif /* __PRIVATE_SPI__ */
+
     IOLog("Ethernet [RealtekRTL8111]: Link up on en%u, %s, %s, %s\n", netif->getUnitNumber(), speedName, duplexName, flowName);
 }
 
@@ -1805,9 +1937,15 @@ void RTL8111::setLinkDown()
     needsUpdate = false;
     //txIntrRate = 0;
 
+#ifdef __PRIVATE_SPI__
+    /* Stop output thread and flush output queue. */
+    netif->stopOutputThread();
+    netif->flushOutputQueue();
+#else
     /* Stop txQueue. */
     txQueue->stop();
     txQueue->flush();
+#endif /* __PRIVATE_SPI__ */
 
     /* Update link status. */
     linkUp = false;
@@ -2183,9 +2321,16 @@ void RTL8111::disableRTL8111()
 
 void RTL8111::restartRTL8111()
 {
-    /* Stop and cleanup txQueue. Also set the link status to down. */
+#ifdef __PRIVATE_SPI__
+    /* Stop output thread and flush txQueue */
+    netif->stopOutputThread();
+    netif->flushOutputQueue();
+#else
+    /* Stop and cleanup txQueue. */
     txQueue->stop();
     txQueue->flush();
+#endif /* __PRIVATE_SPI__ */
+
     linkUp = false;
     setLinkStatus(kIONetworkLinkValid);
         

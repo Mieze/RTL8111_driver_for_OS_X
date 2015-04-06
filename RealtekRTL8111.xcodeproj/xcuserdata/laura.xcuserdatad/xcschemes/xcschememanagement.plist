@@ -4,6 +4,11 @@
 <dict>
 	<key>SchemeUserState</key>
 	<dict>
+		<key>RealtekRTL8111-V2.xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>1</integer>
+		</dict>
 		<key>RealtekRTL8111.xcscheme</key>
 		<dict>
 			<key>orderHint</key>
@@ -12,6 +17,11 @@
 	</dict>
 	<key>SuppressBuildableAutocreation</key>
 	<dict>
+		<key>D34D36B41AD2F62B00EEEC08</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
 		<key>D37BD67E16C605F500C255A2</key>
 		<dict>
 			<key>primary</key>
