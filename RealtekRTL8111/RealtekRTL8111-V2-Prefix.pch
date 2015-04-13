@@ -2,6 +2,8 @@
 // Prefix header for all source files of the 'RealtekRTL8111' target in the 'RealtekRTL8111' project
 //
 
+#define __PRIVATE_SPI__
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus

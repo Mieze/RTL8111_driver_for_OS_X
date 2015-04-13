@@ -464,9 +464,10 @@ done:
 
 #ifdef __PRIVATE_SPI__
 
-IOReturn AtherosE2200::outputStart(IONetworkInterface *interface, IOOptionBits options )
+IOReturn RTL8111::outputStart(IONetworkInterface *interface, IOOptionBits options )
 {
     IOPhysicalSegment txSegments[kMaxSegs];
+    mbuf_t m;
     RtlDmaDesc *desc, *firstDesc;
     IOReturn result = kIOReturnNoResources;
     UInt32 cmd;
