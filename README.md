@@ -49,6 +49,10 @@ The driver has been successfully tested under 10.8.2 - 10.8.5 and 10.9 with the 
 
 Changelog
 
+- Version 2.0.0 (2015-06-21):
+    - Uses Apple's private driver interface introduced with 10.8.
+    - Supports packet scheduling with QFQ.
+    - Please note that 2.0.0 is identical to 2.0.0d2. Only the version number has changed.
 - Version 1.2.3 (2014-08-23):
     - Reworked TSO4 and added support for TSO6.
 - Version 1.2.2 (2014-08-14):
