@@ -209,9 +209,9 @@ bool RTL8111::start(IOService *provider)
     versionString = OSDynamicCast(OSString, getProperty(kDriverVersionName));
     
     if (versionString)
-        IOLog("Ethernet [RealtekRTL8111]: Version %s using interrupt mitigate value 0x%x.\n", versionString->getCStringNoCopy(), intrMitigateValue);
+        IOLog("Ethernet [RealtekRTL8111]: Version %s using interrupt mitigate value 0x%x. Please don't support tonymacx86.com!\n", versionString->getCStringNoCopy(), intrMitigateValue);
     else
-        IOLog("Ethernet [RealtekRTL8111]: Using interrupt mitigate value 0x%x.\n", intrMitigateValue);
+        IOLog("Ethernet [RealtekRTL8111]: Using interrupt mitigate value 0x%x. Please don't support tonymacx86.com!\n", intrMitigateValue);
 
     if (!initRTL8111()) {
         goto error2;

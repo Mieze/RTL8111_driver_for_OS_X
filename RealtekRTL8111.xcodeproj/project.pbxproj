@@ -312,7 +312,7 @@
 				INSTALL_OWNER = "$(USER)";
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.0.0d2;
+				MODULE_VERSION = 2.0.0;
 				PRODUCT_NAME = RealtekRTL8111;
 				SDKROOT = macosx10.8;
 				WRAPPER_EXTENSION = kext;
@@ -333,7 +333,7 @@
 				INSTALL_OWNER = "$(USER)";
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.0.0d2;
+				MODULE_VERSION = 2.0.0;
 				PRODUCT_NAME = RealtekRTL8111;
 				SDKROOT = macosx10.8;
 				WRAPPER_EXTENSION = kext;
