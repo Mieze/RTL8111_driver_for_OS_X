@@ -49,6 +49,8 @@ The driver has been successfully tested under 10.8.2 - 10.8.5 and 10.9 with the 
 
 Changelog
 
+- Version 2.0.0 (2015-07-14):
+    - Replaced Apple headers with those from IONetworkingFamily-85.2 to fix compatibility issues with Mountain Lion.
 - Version 2.0.0 (2015-06-21):
     - Uses Apple's private driver interface introduced with 10.8.
     - Supports packet scheduling with QFQ.
