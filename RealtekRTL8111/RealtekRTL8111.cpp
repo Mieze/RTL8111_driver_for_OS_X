@@ -2064,7 +2064,8 @@ bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
     provider->configWrite8(kIOPCIConfigLatencyTimer, 0x40);
 
     baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
-    
+    //baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2, kIOMapInhibitCache);
+
     if (!baseMap) {
         IOLog("Ethernet [RealtekRTL8111]: region #2 not an MMIO resource, aborting.\n");
         goto done;
