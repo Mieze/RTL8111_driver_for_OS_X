@@ -18,7 +18,7 @@
  * This driver is based on Realtek's r8168 Linux driver (8.037.0).
  */
 
-#include "RealtekRTL8111Linux-803700.h"
+#include "RealtekRTL8111Linux-8040000.h"
 
 #ifdef DEBUG
 #define DebugLog(args...) IOLog(args)
@@ -241,7 +241,9 @@ private:
     
     UInt8 csiFun0ReadByte(UInt32 addr);
     void csiFun0WriteByte(UInt32 addr, UInt8 value);
+    void enablePCIOffset99();
     void disablePCIOffset99();
+    void initPCIOffset99();
     void setPCI99_180ExitDriverPara();
     void hardwareD3Para();
 

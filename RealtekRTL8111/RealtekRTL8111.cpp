@@ -1616,13 +1616,15 @@ void RTL8111::checkLinkStatus()
 		} else if ((tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22 ||
                     tp->mcfg == CFG_METHOD_23 || tp->mcfg == CFG_METHOD_24 ||
                     tp->mcfg == CFG_METHOD_25 || tp->mcfg == CFG_METHOD_26 ||
-                    tp->mcfg == CFG_METHOD_27) && isEnabled) {
+                    tp->mcfg == CFG_METHOD_27 || tp->mcfg == CFG_METHOD_28 ||
+                    tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30) && isEnabled) {
             if (currLinkState & FullDup) {
                 WriteReg32(TxConfig, (ReadReg32(TxConfig) | (BIT_24 | BIT_25)) & ~BIT_19);
             } else {
                 WriteReg32(TxConfig, (ReadReg32(TxConfig) | BIT_25) & ~(BIT_19 | BIT_24));
                 
-                if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22 || tp->mcfg == CFG_METHOD_27) {
+                if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22 ||
+                    tp->mcfg == CFG_METHOD_27 || tp->mcfg == CFG_METHOD_28) {
                     /*half mode*/
                     mdio_write(tp, 0x1F, 0x0000);
                     mdio_write(tp, MII_ADVERTISE, mdio_read(tp, MII_ADVERTISE)&~(ADVERTISE_PAUSE_CAP|ADVERTISE_PAUSE_ASYM));
@@ -1966,6 +1968,7 @@ void RTL8111::setLinkDown()
         case CFG_METHOD_24:
         case CFG_METHOD_25:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
             if (tp->org_pci_offset_99 & BIT_2)
                 if (!(ReadReg8(PHYstatus) & PowerSaveStatus)) {
                     rtl8168_issue_offset_99_event(tp);
@@ -2063,8 +2066,8 @@ bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
 	provider->configWrite16(kIOPCIConfigCommand, cmdReg);
     provider->configWrite8(kIOPCIConfigLatencyTimer, 0x40);
 
-    baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
-    //baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2, kIOMapInhibitCache);
+    //baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
+    baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2, kIOMapInhibitCache);
 
     if (!baseMap) {
         IOLog("Ethernet [RealtekRTL8111]: region #2 not an MMIO resource, aborting.\n");
@@ -2125,8 +2128,11 @@ bool RTL8111::initRTL8111()
         /* ...and try again. */
         rtl8168_get_mac_version(tp, baseAddr);
     }
-    /* Assume original RTL-8168 in case of unkown chipset. */
-    tp->chipset = (tp->mcfg <= CFG_METHOD_27) ? tp->mcfg : CFG_METHOD_1;
+    if (tp->mcfg >= CFG_METHOD_MAX) {
+        DebugLog("Ethernet [RealtekRTL8111]: Unsupported chip found. Aborting...\n");
+        goto done;
+    }
+    tp->chipset =  tp->mcfg;
     
     /* Select the chip revision. */
     revisionC = ((tp->chipset == CFG_METHOD_1) || (tp->chipset == CFG_METHOD_2) || (tp->chipset == CFG_METHOD_3)) ? false : true;
@@ -2139,6 +2145,29 @@ bool RTL8111::initRTL8111()
     
     tp->max_jumbo_frame_size = rtl_chip_info[tp->chipset].jumbo_frame_sz;
 
+    rtl8168_get_bios_setting(tp);
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_11:
+        case CFG_METHOD_12:
+        case CFG_METHOD_13:
+            tp->HwSuppDashVer = 1;
+            break;
+        case CFG_METHOD_23:
+        case CFG_METHOD_27:
+        case CFG_METHOD_28:
+            tp->HwSuppDashVer = 2;
+            break;
+        default:
+            tp->HwSuppDashVer = 0;
+            break;
+    }
+
+    if (HW_DASH_SUPPORT_DASH(tp) && rtl8168_check_dash(tp))
+        tp->DASH = 1;
+    else
+        tp->DASH = 0;
+
     switch (tp->mcfg) {
         case CFG_METHOD_21:
         case CFG_METHOD_22:
@@ -2147,7 +2176,11 @@ bool RTL8111::initRTL8111()
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             tp->org_pci_offset_99 = csiFun0ReadByte(0x99);
+            tp->org_pci_offset_99 &= ~(BIT_5|BIT_6);
             break;
     }
     switch (tp->mcfg) {
@@ -2155,18 +2188,108 @@ bool RTL8111::initRTL8111()
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             tp->org_pci_offset_180 = csiFun0ReadByte(0x180);
             break;
     }
     tp->org_pci_offset_80 = pciDevice->configRead8(0x80);
     tp->org_pci_offset_81 = pciDevice->configRead8(0x81);
     
+    if (tp->mcfg == CFG_METHOD_30) {
+        u16 ioffset_p3, ioffset_p2, ioffset_p1, ioffset_p0;
+        u16 TmpUshort;
+        
+        mac_ocp_write( tp, 0xDD02, 0x807D);
+        TmpUshort = mac_ocp_read( tp, 0xDD02 );
+        ioffset_p3 = ( (TmpUshort & BIT_7) >>7 );
+        ioffset_p3 <<= 3;
+        TmpUshort = mac_ocp_read( tp, 0xDD00 );
+        
+        ioffset_p3 |= ((TmpUshort & (BIT_15 | BIT_14 | BIT_13))>>13);
+        
+        ioffset_p2 = ((TmpUshort & (BIT_12|BIT_11|BIT_10|BIT_9))>>9);
+        ioffset_p1 = ((TmpUshort & (BIT_8|BIT_7|BIT_6|BIT_5))>>5);
+        
+        ioffset_p0 = ( (TmpUshort & BIT_4) >>4 );
+        ioffset_p0 <<= 3;
+        ioffset_p0 |= (TmpUshort & (BIT_2| BIT_1 | BIT_0));
+        
+        if((ioffset_p3 == 0x0F) && (ioffset_p2 == 0x0F) && (ioffset_p1 == 0x0F) && (ioffset_p0 == 0x0F)) {
+            tp->RequireAdcBiasPatch = FALSE;
+        } else {
+            tp->RequireAdcBiasPatch = TRUE;
+            tp->AdcBiasPatchIoffset = (ioffset_p3<<12)|(ioffset_p2<<8)|(ioffset_p1<<4)|(ioffset_p0);
+        }
+    }
+    if ((tp->mcfg == CFG_METHOD_29) || (tp->mcfg == CFG_METHOD_30)) {
+        u16 rg_saw_cnt;
+        
+        mdio_write(tp, 0x1F, 0x0C42);
+        rg_saw_cnt = mdio_read(tp, 0x13);
+        rg_saw_cnt &= ~(BIT_15|BIT_14);
+        mdio_write(tp, 0x1F, 0x0000);
+        
+        if ( rg_saw_cnt > 0) {
+            tp->SwrCnt1msIni = 16000000/rg_saw_cnt;
+            tp->SwrCnt1msIni &= 0x0FFF;
+            
+            tp->RequireAdjustUpsTxLinkPulseTiming = TRUE;
+        }
+    }
+    switch (tp->mcfg) {
+        case CFG_METHOD_14:
+        case CFG_METHOD_15:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_14;
+            break;
+        case CFG_METHOD_16:
+        case CFG_METHOD_17:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_16;
+            break;
+        case CFG_METHOD_18:
+        case CFG_METHOD_19:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_18;
+            break;
+        case CFG_METHOD_20:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_20;
+            break;
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_21;
+            break;
+        case CFG_METHOD_23:
+        case CFG_METHOD_27:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_23;
+            break;
+        case CFG_METHOD_24:
+        case CFG_METHOD_25:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_24;
+            break;
+        case CFG_METHOD_26:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_26;
+            break;
+        case CFG_METHOD_28:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_28;
+            break;
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_29;
+            break;
+    }
+    
+    if (tp->HwIcVerUnknown) {
+        tp->NotWrRamCodeToMicroP = TRUE;
+        tp->NotWrMcuPatchCode = TRUE;
+    }
     rtl8168_exit_oob(tp);
     rtl8168_hw_init(tp);
     rtl8168_nic_reset(tp);
     
     /* Get production from EEPROM */
-    if (((tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22 || tp->mcfg == CFG_METHOD_25) && (mac_ocp_read(tp, 0xDC00) & BIT_3)) ||
+    if (((tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22 ||
+          tp->mcfg == CFG_METHOD_25 || tp->mcfg == CFG_METHOD_29 ||
+          tp->mcfg == CFG_METHOD_30) && (mac_ocp_read(tp, 0xDC00) & BIT_3)) ||
         ((tp->mcfg == CFG_METHOD_26) && (mac_ocp_read(tp, 0xDC00) & BIT_4)))
         tp->eeprom_type = EEPROM_TYPE_NONE;
     else
@@ -2184,7 +2307,10 @@ bool RTL8111::initRTL8111()
         tp->mcfg == CFG_METHOD_24 ||
         tp->mcfg == CFG_METHOD_25 ||
         tp->mcfg == CFG_METHOD_26 ||
-        tp->mcfg == CFG_METHOD_27) {
+        tp->mcfg == CFG_METHOD_27 ||
+        tp->mcfg == CFG_METHOD_28 ||
+        tp->mcfg == CFG_METHOD_29 ||
+        tp->mcfg == CFG_METHOD_30) {
         
         *(UInt32*)&mac_addr[0] = rtl8168_eri_read(baseAddr, 0xE0, 4, ERIAR_ExGMAC);
         *(UInt16*)&mac_addr[2] = rtl8168_eri_read(baseAddr, 0xE4, 2, ERIAR_ExGMAC);
@@ -2209,7 +2335,10 @@ bool RTL8111::initRTL8111()
                 tp->mcfg == CFG_METHOD_24 ||
                 tp->mcfg == CFG_METHOD_25 ||
                 tp->mcfg == CFG_METHOD_26 ||
-                tp->mcfg == CFG_METHOD_27) {
+                tp->mcfg == CFG_METHOD_27 ||
+                tp->mcfg == CFG_METHOD_28 ||
+                tp->mcfg == CFG_METHOD_29 ||
+                tp->mcfg == CFG_METHOD_30) {
                 mac_addr[0] = rtl_eeprom_read_sc(tp, 1);
                 mac_addr[1] = rtl_eeprom_read_sc(tp, 2);
                 mac_addr[2] = rtl_eeprom_read_sc(tp, 3);
@@ -2256,8 +2385,13 @@ bool RTL8111::initRTL8111()
         case CFG_METHOD_20:
         case CFG_METHOD_21:
         case CFG_METHOD_22:
-        case CFG_METHOD_23:
         case CFG_METHOD_24:
+        case CFG_METHOD_25:
+        case CFG_METHOD_26:
+        case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             wol = ((options1 & LinkUp) || (csi_tmp & BIT_0) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF)) ? true : false;
             break;
             
@@ -2354,11 +2488,9 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
     UInt16 mac_ocp_data;
     UInt8 device_control;
     
-	WriteReg32(RxConfig, RxCfg_128_int_en | (RX_DMA_BURST << RxCfgDMAShift));
+	WriteReg32(RxConfig, (RX_DMA_BURST << RxCfgDMAShift));
     
 	rtl8168_nic_reset(tp);
-    
-	//rtl8168_rx_desc_offset0_init(tp, 1);
     
 	WriteReg8(Cfg9346, Cfg9346_Unlock);
     
@@ -2377,11 +2509,31 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             WriteReg8(0xF1, ReadReg8(0xF1) & ~BIT_7);
             WriteReg8(Config2, ReadReg8(Config2) & ~BIT_7);
             WriteReg8(Config5, ReadReg8(Config5) & ~BIT_0);
             break;
     }
+    //clear io_rdy_l23
+    switch (tp->mcfg) {
+        case CFG_METHOD_20:
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+        case CFG_METHOD_23:
+        case CFG_METHOD_24:
+        case CFG_METHOD_25:
+        case CFG_METHOD_26:
+        case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            WriteReg8(Config3, ReadReg8(Config3) & ~BIT_1);
+            break;
+    }
+
 	WriteReg8(MTPS, Reserved1_data);
     
 	tp->cp_cmd |= PktCntrDisable | INTT_1 | RxChkSum;
@@ -2702,7 +2854,9 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         
     } else if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22 ||
                tp->mcfg == CFG_METHOD_24 || tp->mcfg == CFG_METHOD_25 ||
-               tp->mcfg == CFG_METHOD_26) {
+               tp->mcfg == CFG_METHOD_26 || tp->mcfg == CFG_METHOD_29 ||
+               tp->mcfg == CFG_METHOD_30) {
+        
         set_offset70F(tp, 0x17);
         setOffset79(0x50);
         
@@ -2730,15 +2884,38 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
             mac_ocp_data = mac_ocp_read(tp, 0xD3C4);
             mac_ocp_data |= BIT_0;
             mac_ocp_write(tp, 0xD3C4, mac_ocp_data);
+        } else if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30) {
+            
+            if(tp->RequireAdjustUpsTxLinkPulseTiming) {
+                mac_ocp_data = mac_ocp_read(tp, 0xD412);
+                mac_ocp_data &= ~(0x0FFF);
+                mac_ocp_data |= tp->SwrCnt1msIni ;
+                mac_ocp_write(tp, 0xD412, mac_ocp_data);
+            }
+            
+            mac_ocp_data = mac_ocp_read(tp, 0xE056);
+            mac_ocp_data &= ~(BIT_7 | BIT_6 | BIT_5 | BIT_4);
+            mac_ocp_data |= (BIT_6 | BIT_5 | BIT_4);
+            mac_ocp_write(tp, 0xE056, mac_ocp_data);
+            
+            mac_ocp_data = mac_ocp_read(tp, 0xE052);
+            mac_ocp_data &= ~( BIT_14 | BIT_13);
+            mac_ocp_data |= BIT_15;
+            mac_ocp_data |= BIT_3;
+            mac_ocp_write(tp, 0xE052, mac_ocp_data);
+            
+            mac_ocp_data = mac_ocp_read(tp, 0xD420);
+            mac_ocp_data &= ~(BIT_11 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4 | BIT_3 | BIT_2 | BIT_1 | BIT_0);
+            mac_ocp_data |= 0x47F;
+            mac_ocp_write(tp, 0xD420, mac_ocp_data);
+            
+            mac_ocp_data = mac_ocp_read(tp, 0xE0D6);
+            mac_ocp_data &= ~(BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4 | BIT_3 | BIT_2 | BIT_1 | BIT_0);
+            mac_ocp_data |= 0x17F;
+            mac_ocp_write(tp, 0xE0D6, mac_ocp_data);
         }
         
         WriteReg8(Config3, ReadReg8(Config3) & ~Beacon_en);
-        
-        tp->cp_cmd = ReadReg16(CPlusCmd) &
-        ~(EnableBist | Macdbgo_oe | Force_halfdup |
-          Force_rxflow_en | Force_txflow_en |
-          Cxpl_dbg_sel | ASF | PktCntrDisable |
-          Macdbgo_sel);
         
         WriteReg8(0x1B, ReadReg8(0x1B) & ~0x07);
         
@@ -2748,7 +2925,7 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         
         if (tp->aspm)
             WriteReg8(0xF1, ReadReg8(0xF1) | BIT_7);
-                
+        
         WriteReg8(0xD0, ReadReg8(0xD0) | BIT_6);
         WriteReg8(0xF2, ReadReg8(0xF2) | BIT_6);
         
@@ -2757,36 +2934,58 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         rtl8168_eri_write(baseAddr, 0xC0, 2, 0x0000, ERIAR_ExGMAC);
         rtl8168_eri_write(baseAddr, 0xB8, 4, 0x00000000, ERIAR_ExGMAC);
         
-        rtl8168_eri_write(baseAddr, 0x5F0, 2, 0x4f87, ERIAR_ExGMAC);
+        rtl8168_eri_write(baseAddr, 0x5F0, 2, 0x4F87, ERIAR_ExGMAC);
         
-        csi_tmp = rtl8168_eri_read(baseAddr, 0xD4, 4, ERIAR_ExGMAC);
-        csi_tmp  |= ( BIT_7 | BIT_8 | BIT_9 | BIT_10 | BIT_11 | BIT_12 );
-        rtl8168_eri_write(baseAddr, 0xD4, 4, csi_tmp, ERIAR_ExGMAC);
+        if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30) {
+            csi_tmp = rtl8168_eri_read(baseAddr, 0xD4, 4, ERIAR_ExGMAC);
+            csi_tmp |= (BIT_8 | BIT_9 | BIT_10 | BIT_11 | BIT_12);
+            rtl8168_eri_write(baseAddr, 0xD4, 4, csi_tmp, ERIAR_ExGMAC);
+            
+            csi_tmp = rtl8168_eri_read(baseAddr, 0xDC, 4, ERIAR_ExGMAC);
+            csi_tmp |= (BIT_2 | BIT_3 | BIT_4);
+            rtl8168_eri_write(baseAddr, 0xDC, 4, csi_tmp, ERIAR_ExGMAC);
+        } else {
+            csi_tmp = rtl8168_eri_read(baseAddr, 0xD4, 4, ERIAR_ExGMAC);
+            csi_tmp |= (BIT_7 | BIT_8 | BIT_9 | BIT_10 | BIT_11 | BIT_12);
+            rtl8168_eri_write(baseAddr, 0xD4, 4, csi_tmp, ERIAR_ExGMAC);
+        }
+        
+        if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22 ||
+            tp->mcfg == CFG_METHOD_24 || tp->mcfg == CFG_METHOD_25) {
+            mac_ocp_write(tp, 0xC140, 0xFFFF);
+        } else if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30) {
+            mac_ocp_write(tp, 0xC140, 0xFFFF);
+            mac_ocp_write(tp, 0xC142, 0xFFFF);
+        }
         
         csi_tmp = rtl8168_eri_read(baseAddr, 0x1B0, 4, ERIAR_ExGMAC);
         csi_tmp &= ~BIT_12;
         rtl8168_eri_write(baseAddr, 0x1B0, 4, csi_tmp, ERIAR_ExGMAC);
         
-        csi_tmp = rtl8168_eri_read(baseAddr, 0x2FC, 1, ERIAR_ExGMAC);
-        csi_tmp &= ~(BIT_0 | BIT_1 | BIT_2);
-        csi_tmp |= BIT_0;
-        rtl8168_eri_write(baseAddr, 0x2FC, 1, csi_tmp, ERIAR_ExGMAC);
+        if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30) {
+            csi_tmp = rtl8168_eri_read(baseAddr, 0x2FC, 1, ERIAR_ExGMAC);
+            csi_tmp &= ~(BIT_2);
+            rtl8168_eri_write(baseAddr, 0x2FC, 1, csi_tmp, ERIAR_ExGMAC);
+        } else {
+            csi_tmp = rtl8168_eri_read(baseAddr, 0x2FC, 1, ERIAR_ExGMAC);
+            csi_tmp &= ~(BIT_0 | BIT_1 | BIT_2);
+            csi_tmp |= BIT_0;
+            rtl8168_eri_write(baseAddr, 0x2FC, 1, csi_tmp, ERIAR_ExGMAC);
+        }
         
         csi_tmp = rtl8168_eri_read(baseAddr, 0x1D0, 1, ERIAR_ExGMAC);
         csi_tmp |= BIT_1;
         rtl8168_eri_write(baseAddr, 0x1D0, 1, csi_tmp, ERIAR_ExGMAC);
         
-        /* Disable L2/L3 PCIe link state. */
-        if (tp->mcfg == CFG_METHOD_21)
-            WriteReg8(Config3, ReadReg8(Config3) &  ~RDY_TO_L23);
+    } else if (tp->mcfg == CFG_METHOD_23 || tp->mcfg == CFG_METHOD_27 ||
+               tp->mcfg == CFG_METHOD_28) {
         
-    } else if (tp->mcfg == CFG_METHOD_23 || tp->mcfg == CFG_METHOD_27) {
         set_offset70F(tp, 0x17);
         setOffset79(0x50);
         
         rtl8168_eri_write(baseAddr, 0xC8, 4, 0x00080002, ERIAR_ExGMAC);
-        rtl8168_eri_write(baseAddr, 0xCC, 1, 0x2f, ERIAR_ExGMAC);
-        rtl8168_eri_write(baseAddr, 0xD0, 1, 0x5f, ERIAR_ExGMAC);
+        rtl8168_eri_write(baseAddr, 0xCC, 1, 0x2F, ERIAR_ExGMAC);
+        rtl8168_eri_write(baseAddr, 0xD0, 1, 0x5F, ERIAR_ExGMAC);
         rtl8168_eri_write(baseAddr, 0xE8, 4, 0x00100006, ERIAR_ExGMAC);
         
         WriteReg32(TxConfig, ReadReg32(TxConfig) | BIT_7);
@@ -2799,14 +2998,13 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         
         WriteReg8(Config3, ReadReg8(Config3) & ~Beacon_en);
         
-        tp->cp_cmd = ReadReg16(CPlusCmd) &
-        ~(EnableBist | Macdbgo_oe | Force_halfdup |
-          Force_rxflow_en | Force_txflow_en |
-          Cxpl_dbg_sel | ASF | PktCntrDisable |
-          Macdbgo_sel);
+        WriteReg8(0xD0, ReadReg8(0xD0) | BIT_6);
+        WriteReg8(0xF2, ReadReg8(0xF2) | BIT_6);
         
-        rtl8168_eri_write(baseAddr, 0xC0, 2, 0x00000000, ERIAR_ExGMAC);
-        rtl8168_eri_write(baseAddr, 0xB8, 2, 0x00000000, ERIAR_ExGMAC);
+        WriteReg8(0xD0, ReadReg8(0xD0) | BIT_7);
+        
+        rtl8168_eri_write(baseAddr, 0xC0, 2, 0x0000, ERIAR_ExGMAC);
+        rtl8168_eri_write(baseAddr, 0xB8, 4, 0x00000000, ERIAR_ExGMAC);
         WriteReg8(0x1B, ReadReg8(0x1B) & ~0x07);
         
         WriteReg8(TDFNR, 0x4);
@@ -2826,10 +3024,34 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         csi_tmp = rtl8168_eri_read(baseAddr, 0x1D0, 1, ERIAR_ExGMAC);
         csi_tmp |= BIT_1;
         rtl8168_eri_write(baseAddr, 0x1D0, 1, csi_tmp, ERIAR_ExGMAC);
-                
+        
+        if (tp->mcfg == CFG_METHOD_27 || tp->mcfg == CFG_METHOD_28) {
+            OOB_mutex_lock(tp);
+            rtl8168_eri_write(baseAddr, 0x5F0, 2, 0x4F87, ERIAR_ExGMAC);
+            OOB_mutex_unlock(tp);
+        }
+        
         csi_tmp = rtl8168_eri_read(baseAddr, 0xD4, 4, ERIAR_ExGMAC);
         csi_tmp  |= ( BIT_7 | BIT_8 | BIT_9 | BIT_10 | BIT_11 | BIT_12 );
         rtl8168_eri_write(baseAddr, 0xD4, 4, csi_tmp, ERIAR_ExGMAC);
+        
+        mac_ocp_write(tp, 0xC140, 0xFFFF);
+        mac_ocp_write(tp, 0xC142, 0xFFFF);
+        
+        if (tp->mcfg == CFG_METHOD_28) {
+            mac_ocp_data = mac_ocp_read(tp, 0xD3E2);
+            mac_ocp_data &= 0xF000;
+            mac_ocp_data |= 0x3A9;
+            mac_ocp_write(tp, 0xD3E2, mac_ocp_data);
+            
+            mac_ocp_data = mac_ocp_read(tp, 0xD3E4);
+            mac_ocp_data &= 0xFF00;
+            mac_ocp_write(tp, 0xD3E4, mac_ocp_data);
+            
+            mac_ocp_data = mac_ocp_read(tp, 0xE860);
+            mac_ocp_data |= BIT_7;
+            mac_ocp_write(tp, 0xE860, mac_ocp_data);
+        }
         
 	} else if (tp->mcfg == CFG_METHOD_1) {
 		WriteReg8(Config3, ReadReg8(Config3) & ~Beacon_en);
@@ -2907,8 +3129,11 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             if (tp->aspm) {
-                rtl8168_init_pci_offset_99(tp);
+                initPCIOffset99();
             }
             break;
     }
@@ -2917,11 +3142,15 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             if (tp->aspm) {
                 rtl8168_init_pci_offset_180(tp);
             }
             break;
     }
+    tp->cp_cmd &= ~(EnableBist | Macdbgo_oe | Force_halfdup | Force_rxflow_en | Force_txflow_en | Cxpl_dbg_sel | ASF | Macdbgo_sel);
     tp->cp_cmd |= (RxChkSum | RxVlan);
 	WriteReg16(CPlusCmd, tp->cp_cmd);
     ReadReg16(CPlusCmd);
@@ -2939,7 +3168,10 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         case CFG_METHOD_24:
         case CFG_METHOD_25:
         case CFG_METHOD_26:
-        case CFG_METHOD_27: {
+        case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:	{
             int timeout;
             for (timeout = 0; timeout < 10; timeout++) {
                 if ((rtl8168_eri_read(baseAddr, 0x1AE, 2, ERIAR_ExGMAC) & BIT_13)==0)
@@ -2973,6 +3205,9 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             if (tp->aspm) {
                 WriteReg8(Config5, ReadReg8(Config5) | BIT_0);
                 WriteReg8(Config2, ReadReg8(Config2) | BIT_7);
@@ -3043,6 +3278,42 @@ void RTL8111::csiFun0WriteByte(UInt32 addr, UInt8 value)
     }
 }
 
+void RTL8111::enablePCIOffset99()
+{
+    u32 csi_tmp;
+    
+    switch (linuxData.mcfg) {
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+        case CFG_METHOD_26:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            csiFun0WriteByte(0x99, linuxData.org_pci_offset_99);
+            break;
+    }
+    
+    switch (linuxData.mcfg) {
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+        case CFG_METHOD_23:
+        case CFG_METHOD_24:
+        case CFG_METHOD_25:
+        case CFG_METHOD_26:
+        case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            csi_tmp = rtl8168_eri_read(baseAddr, 0x3F2, 2, ERIAR_ExGMAC);
+            csi_tmp &= ~(BIT_0 | BIT_1);
+            if (!(linuxData.org_pci_offset_99 & (BIT_5 | BIT_6)))
+                csi_tmp |= BIT_1;
+            if (!(linuxData.org_pci_offset_99 & BIT_2))
+                csi_tmp |= BIT_0;
+            rtl8168_eri_write(baseAddr, 0x3F2, 2, csi_tmp, ERIAR_ExGMAC);
+            break;
+    }
+}
+
 void RTL8111::disablePCIOffset99()
 {
     UInt32 csi_tmp;
@@ -3055,6 +3326,9 @@ void RTL8111::disablePCIOffset99()
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             csi_tmp = rtl8168_eri_read(baseAddr, 0x3F2, 2, ERIAR_ExGMAC);
             csi_tmp &= ~(BIT_0 | BIT_1);
             rtl8168_eri_write(baseAddr, 0x3F2, 2, csi_tmp, ERIAR_ExGMAC);
@@ -3064,9 +3338,111 @@ void RTL8111::disablePCIOffset99()
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_26:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             csiFun0WriteByte(0x99, 0x00);
             break;
     }
+}
+
+void RTL8111::initPCIOffset99()
+{
+    struct rtl8168_private *tp = &linuxData;
+    UInt32 csi_tmp;
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_26:
+            csi_tmp = rtl8168_eri_read(baseAddr, 0x5C2, 1, ERIAR_ExGMAC);
+            csi_tmp &= ~BIT_1;
+            rtl8168_eri_write(baseAddr, 0x5C2, 1, csi_tmp, ERIAR_ExGMAC);
+            break;
+    }
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+        case CFG_METHOD_23:
+        case CFG_METHOD_24:
+        case CFG_METHOD_25:
+        case CFG_METHOD_26:
+        case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            csi_tmp = rtl8168_eri_read(baseAddr, 0x3F2, 2, ERIAR_ExGMAC);
+            csi_tmp &= ~( BIT_8 | BIT_9  | BIT_10 | BIT_11  | BIT_12  | BIT_13  | BIT_14 | BIT_15 );
+            csi_tmp |= ( BIT_9 | BIT_10 | BIT_13  | BIT_14 | BIT_15 );
+            rtl8168_eri_write(baseAddr, 0x3F2, 2, csi_tmp, ERIAR_ExGMAC);
+            csi_tmp = rtl8168_eri_read(baseAddr, 0x3F5, 1, ERIAR_ExGMAC);
+            csi_tmp |= BIT_6 | BIT_7;
+            rtl8168_eri_write(baseAddr, 0x3F5, 1, csi_tmp, ERIAR_ExGMAC);
+            mac_ocp_write(tp, 0xE02C, 0x1880);
+            mac_ocp_write(tp, 0xE02E, 0x4880);
+            break;
+    }
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_26:
+            csi_tmp = rtl8168_eri_read(baseAddr, 0x5C8, 1, ERIAR_ExGMAC);
+            csi_tmp |= BIT_0;
+            rtl8168_eri_write(baseAddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
+            break;
+    }
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_23:
+            rtl8168_eri_write(baseAddr, 0x2E8, 2, 0x883C, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2EA, 2, 0x8C12, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2EC, 2, 0x9003, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2E2, 2, 0x883C, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2E4, 2, 0x8C12, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2E6, 2, 0x9003, ERIAR_ExGMAC);
+            break;
+            
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+        case CFG_METHOD_24:
+        case CFG_METHOD_25:
+        case CFG_METHOD_26:
+        case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            rtl8168_eri_write(baseAddr, 0x2E8, 2, 0x9003, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2EA, 2, 0x9003, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2EC, 2, 0x9003, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2E2, 2, 0x883C, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2E4, 2, 0x8C12, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x2E6, 2, 0x9003, ERIAR_ExGMAC);
+            break;
+    }
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_26:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            WriteReg8(0xB6, ReadReg8(0xB6) | BIT_0);
+            
+            csi_tmp = rtl8168_eri_read(baseAddr, 0x5C8, 1, ERIAR_ExGMAC);
+            csi_tmp |= BIT_0;
+            rtl8168_eri_write(baseAddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
+            break;
+    }
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+        case CFG_METHOD_24:
+        case CFG_METHOD_25:
+        case CFG_METHOD_26:
+        case CFG_METHOD_27:
+        case CFG_METHOD_28:
+            csi_tmp = rtl8168_eri_read(baseAddr, 0x3FA, 2, ERIAR_ExGMAC);
+            csi_tmp |= BIT_14;
+            rtl8168_eri_write(baseAddr, 0x3FA, 2, csi_tmp, ERIAR_ExGMAC);
+            break;
+    }
+    
 }
 
 void RTL8111::setPCI99_180ExitDriverPara()
@@ -3080,6 +3456,9 @@ void RTL8111::setPCI99_180ExitDriverPara()
         case CFG_METHOD_24:
         case CFG_METHOD_25:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             rtl8168_issue_offset_99_event(tp);
             break;
     }
@@ -3091,6 +3470,9 @@ void RTL8111::setPCI99_180ExitDriverPara()
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             disablePCIOffset99();
             break;
     }
@@ -3099,6 +3481,9 @@ void RTL8111::setPCI99_180ExitDriverPara()
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             rtl8168_disable_pci_offset_180(tp);
             break;
     }
@@ -3126,6 +3511,9 @@ void RTL8111::hardwareD3Para()
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
+        case CFG_METHOD_28:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
             WriteReg8(0xF1, ReadReg8(0xF1) & ~BIT_7);
             WriteReg8(Cfg9346, Cfg9346_Unlock);
             WriteReg8(Config2, ReadReg8(Config2) & ~BIT_7);
@@ -3136,7 +3524,7 @@ void RTL8111::hardwareD3Para()
     if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22 ||
         tp->mcfg == CFG_METHOD_23 || tp->mcfg == CFG_METHOD_24 ||
         tp->mcfg == CFG_METHOD_25 || tp->mcfg == CFG_METHOD_26 ||
-        tp->mcfg == CFG_METHOD_27) {
+        tp->mcfg == CFG_METHOD_27 || tp->mcfg == CFG_METHOD_28) {
         rtl8168_eri_write(baseAddr, 0x2F8, 2, 0x0064, ERIAR_ExGMAC);
     }
     
@@ -3166,11 +3554,11 @@ void RTL8111::hardwareD3Para()
     setPCI99_180ExitDriverPara();
     
     /*disable ocp phy power saving*/
-    if (tp->mcfg == CFG_METHOD_25 || tp->mcfg == CFG_METHOD_26 || tp->mcfg == CFG_METHOD_27) {
-        mdio_write(tp, 0x1F, 0x0C41);
-        mdio_write(tp, 0x13, 0x0000);
-        mdio_write(tp, 0x13, 0x0500);
-        mdio_write(tp, 0x1F, 0x0000);
+    if (tp->mcfg == CFG_METHOD_25 || tp->mcfg == CFG_METHOD_26 ||
+        tp->mcfg == CFG_METHOD_27 || tp->mcfg == CFG_METHOD_28 ||
+        tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30) {
+        mdio_write_phy_ocp(tp, 0x0C41, 0x13, 0x0000);
+        mdio_write_phy_ocp(tp, 0x0C41, 0x13, 0x0500);
     }
     rtl8168_disable_rxdvgate(tp);
 }
