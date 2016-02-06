@@ -214,15 +214,19 @@ enum {
         for TCP/IPv4 segmentation offload.
     @constant kIONetworkFeatureTSOIPv6 Set this bit to advertise support
         for TCP/IPv6 segmentation offload.
+    @constant kIONetworkFeatureTransmitCompletionStatus Set this bit to
+        advertise the capability to report per-packet transmit completion status.
+        See <code>IONetworkInterface::reportTransmitCompletionStatus</code>.
 */
 
 enum {
-    kIONetworkFeatureNoBSDWait              = 0x01,
-	kIONetworkFeatureHardwareVlan           = 0x02,
-	kIONetworkFeatureSoftwareVlan           = 0x04,
-	kIONetworkFeatureMultiPages             = 0x08,
-	kIONetworkFeatureTSOIPv4                = 0x10,
-	kIONetworkFeatureTSOIPv6                = 0x20
+    kIONetworkFeatureNoBSDWait                  = 0x01,
+    kIONetworkFeatureHardwareVlan               = 0x02,
+    kIONetworkFeatureSoftwareVlan               = 0x04,
+    kIONetworkFeatureMultiPages                 = 0x08,
+    kIONetworkFeatureTSOIPv4                    = 0x10,
+    kIONetworkFeatureTSOIPv6                    = 0x20,
+    kIONetworkFeatureTransmitCompletionStatus   = 0x40
 };
 
 #ifdef KERNEL
@@ -1496,6 +1500,41 @@ public:
 */
     static IOMbufServiceClass getMbufServiceClass( mbuf_t mbuf );
 
+/*! @function attachAuxiliaryDataToPacket
+    @abstract Attach family or driver specific data to a mbuf packet.
+    @discussion Memory is allocated for the auxiliary data and attached to
+    the packet. The data provided is then copied to the allocated memory.    
+    Attaching auxiliary data to a packet which already has auxiliary data
+    attached will fail. The existing auxiliary data must be detached from the
+    packet and freed using <code>removeAuxiliaryDataFromPacket</code> before
+    attaching new data. Freeing the packet will also free any memory allocated
+    for auxiliary data.
+    @param packet The mbuf packet to attach the auxiliary data to. The packet
+    must point to a header mbuf with <code>MBUF_PKTHDR</code> flag set.
+    @param data Pointer to the auxiliary data provided by the caller.
+    This cannot be NULL.
+    @param length The length of the auxiliary data in bytes.
+    This must be greater than zero.
+    @param family The interface family defined in net/kpi_interface.h.
+    @param subFamily Reserved for future use.
+    @result <code>kIOReturnSuccess</code> upon success, or an error code
+    otherwise.
+*/
+    static IOReturn attachAuxiliaryDataToPacket(
+                        mbuf_t          packet,
+                        const void *    data,
+                        IOByteCount     length,
+                        uint32_t        family    = 0,
+                        uint32_t        subFamily = 0 );
+
+/*! @function removeAuxiliaryDataFromPacket
+	@discussion Remove and free any driver auxiliary data associated with
+    the packet.
+    @param packet The mbuf packet to remove the auxiliary data from.
+*/
+    static void     removeAuxiliaryDataFromPacket(
+                        mbuf_t  packet );
+
 /*! @function outputStart
 	@abstract An indication to the driver to dequeue and transmit packets
     waiting in the interface output queue.
@@ -1546,7 +1585,7 @@ public:
     @param interface The interface that has enabled or disabled input polling.
     @param enabled <code>true</code> if input polling is enabled,
     <code>false</code> if input polling is disabled.
-    @result Driver should return <code>kIOReturnSuccess</code> the transition
+    @result Driver should return <code>kIOReturnSuccess</code> if the transition
     to/from polled-mode was successful, or an error code otherwise.
 */
     virtual IOReturn setInputPacketPollingEnable(
@@ -1583,12 +1622,33 @@ public:
                         void *                  context );
 
     OSMetaClassDeclareReservedUsed( IONetworkController,  4);
+
+/*! @function networkInterfaceNotification
+    @abstract Receives notification from an attached network interface.
+    @discussion An attached network interface invokes this method to notify
+    the driver about an interface state change or an event from the networking
+    stack. The family does not synchronize the call using the driver's work
+    loop.
+    @param interface The interface that issued the notification.
+    @param type The type of notification.
+    @param argument Optional data associated with the notification. Can be
+    NULL if the notification does not provide in-band data.
+    @result Default implementation returns <code>kIOReturnUnsupported</code>.
+    Driver should return <code>kIOReturnSuccess</code> if the notification
+    was handled.
+*/
+    virtual IOReturn networkInterfaceNotification(
+                        IONetworkInterface * interface,
+                        uint32_t 			 type,
+                        void * 				 argument );
+
+    OSMetaClassDeclareReservedUsed( IONetworkController,  5);
 #else   /* !__PRIVATE_SPI__ */
     OSMetaClassDeclareReservedUnused( IONetworkController,  2);
     OSMetaClassDeclareReservedUnused( IONetworkController,  3);
     OSMetaClassDeclareReservedUnused( IONetworkController,  4);
-#endif  /* !__PRIVATE_SPI__ */
     OSMetaClassDeclareReservedUnused( IONetworkController,  5);
+#endif  /* !__PRIVATE_SPI__ */
     OSMetaClassDeclareReservedUnused( IONetworkController,  6);
     OSMetaClassDeclareReservedUnused( IONetworkController,  7);
     OSMetaClassDeclareReservedUnused( IONetworkController,  8);

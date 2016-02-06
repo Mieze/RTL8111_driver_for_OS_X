@@ -1,4 +1,4 @@
-/* RealtekRTL8111Linux-8040000.h -- Definitions shared with the linux driver code.
+/* RealtekRTL8111Linux-8041000.h -- Definitions shared with the linux driver code.
  *
  * Copyright (c) 2013 Laura Müller <laura-mueller@uni-duesseldorf.de>
  * All rights reserved.
@@ -15,7 +15,7 @@
  *
  * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
- * This driver is based on Realtek's r8168 Linux driver (8.040.00).
+ * This driver is based on Realtek's r8168 Linux driver (8.041.00).
  */
 
 /*
@@ -1363,7 +1363,12 @@ if(!(expr)) {                   \
         u16 cur_page;
         u32 bios_setting;
         
+#if DISABLED_CODE
+
         int (*set_speed)(struct net_device *, u8 autoneg, u16 speed, u8 duplex);
+        
+#endif /* DISABLED_CODE */
+
         void (*get_settings)(struct net_device *, struct ethtool_cmd *);
         void (*phy_reset_enable)(struct net_device *);
         unsigned int (*phy_reset_pending)(struct net_device *);
@@ -1794,13 +1799,12 @@ struct RTLChipInfo {
     
 void rtl8168_dsm(struct net_device *dev, int dev_state);
 void rtl8168_rar_set(struct rtl8168_private *tp, uint8_t *addr);
-int rtl8168_set_speed(struct net_device *dev, u8 autoneg, u16 speed, u8 duplex);
+//int rtl8168_set_speed(struct net_device *dev, u8 autoneg, u16 speed, u8 duplex);
 void rtl8168dp_10mbps_gphy_para(struct net_device *dev);
 int rtl8168_eri_write(void __iomem *ioaddr, int addr, int len, u32 value, int type);
 u32 rtl8168_eri_read(void __iomem *ioaddr, int addr, int len, int type);
 void rtl8168_get_mac_version(struct rtl8168_private *tp, void __iomem *ioaddr);
 void rtl8168_print_mac_version(struct rtl8168_private *tp);
-int rtl8168_set_speed_xmii(struct net_device *dev, u8 autoneg, u16 speed, u8 duplex);
 void rtl8168_gset_xmii(struct net_device *dev, struct ethtool_cmd *cmd);
 void rtl8168_xmii_reset_enable(struct net_device *dev);
 unsigned int rtl8168_xmii_reset_pending(struct net_device *dev);
@@ -1833,3 +1837,4 @@ void rtl8168_get_hw_wol(struct net_device *dev);
 void mdio_write_phy_ocp(struct rtl8168_private *tp, u16 PageNum, u32 RegAddr, u32 value);
 void rtl8168_get_bios_setting(struct net_device *dev);
 int rtl8168_check_dash(struct rtl8168_private *tp);
+void set_offset711(struct rtl8168_private *tp, u8 setting);

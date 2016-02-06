@@ -1,4 +1,4 @@
-/* RealtekRTL8111Linux-8040000.cpp -- Code shared with the linux driver.
+/* RealtekRTL8111Linux-8041000.cpp -- Code shared with the linux driver.
  *
  * Copyright (c) 2013 Laura Müller <laura-mueller@uni-duesseldorf.de>
  * All rights reserved.
@@ -15,7 +15,7 @@
  *
  * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
- * This driver is based on Realtek's r8168 Linux driver (8.040.00).
+ * This driver is based on Realtek's r8168 Linux driver (8.041.00).
  */
 
 /*
@@ -319,7 +319,7 @@ static struct pci_device_id rtl8168_pci_tbl[] = {
 
 MODULE_DEVICE_TABLE(pci, rtl8168_pci_tbl);
 
-static int rx_copybreak = 200;
+static int rx_copybreak = 0;
 static int timer_count = 0x2600;
 
 static struct {
@@ -3286,21 +3286,23 @@ rtl8168_enable_pci_offset_99(struct rtl8168_private *tp)
         }
 }
 
-void
+static void
 rtl8168_init_pci_offset_99(struct rtl8168_private *tp)
 {
-        void __iomem *ioaddr = tp->mmio_addr;
-        u32 csi_tmp;
-
-        switch (tp->mcfg) {
+    void __iomem *ioaddr = tp->mmio_addr;
+    u32 csi_tmp;
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_26:
+            if (tp->org_pci_offset_99 & BIT_2) {
                 csi_tmp = rtl8168_eri_read(ioaddr, 0x5C2, 1, ERIAR_ExGMAC);
                 csi_tmp &= ~BIT_1;
                 rtl8168_eri_write(ioaddr, 0x5C2, 1, csi_tmp, ERIAR_ExGMAC);
-                break;
-        }
-
-        switch (tp->mcfg) {
+            }
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_23:
@@ -3311,35 +3313,45 @@ rtl8168_init_pci_offset_99(struct rtl8168_private *tp)
         case CFG_METHOD_28:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                csi_tmp = rtl8168_eri_read(ioaddr, 0x3F2, 2, ERIAR_ExGMAC);
-                csi_tmp &= ~( BIT_8 | BIT_9  | BIT_10 | BIT_11  | BIT_12  | BIT_13  | BIT_14 | BIT_15 );
-                csi_tmp |= ( BIT_9 | BIT_10 | BIT_13  | BIT_14 | BIT_15 );
-                rtl8168_eri_write(ioaddr, 0x3F2, 2, csi_tmp, ERIAR_ExGMAC);
-                csi_tmp = rtl8168_eri_read(ioaddr, 0x3F5, 1, ERIAR_ExGMAC);
-                csi_tmp |= BIT_6 | BIT_7;
-                rtl8168_eri_write(ioaddr, 0x3F5, 1, csi_tmp, ERIAR_ExGMAC);
-                mac_ocp_write(tp, 0xE02C, 0x1880);
-                mac_ocp_write(tp, 0xE02E, 0x4880);
-                break;
-        }
-
-        switch (tp->mcfg) {
+            csi_tmp = rtl8168_eri_read(ioaddr, 0x3F2, 2, ERIAR_ExGMAC);
+            csi_tmp &= ~( BIT_8 | BIT_9  | BIT_10 | BIT_11  | BIT_12  | BIT_13  | BIT_14 | BIT_15 );
+            csi_tmp |= ( BIT_9 | BIT_10 | BIT_13  | BIT_14 | BIT_15 );
+            rtl8168_eri_write(ioaddr, 0x3F2, 2, csi_tmp, ERIAR_ExGMAC);
+            csi_tmp = rtl8168_eri_read(ioaddr, 0x3F5, 1, ERIAR_ExGMAC);
+            csi_tmp |= BIT_6 | BIT_7;
+            rtl8168_eri_write(ioaddr, 0x3F5, 1, csi_tmp, ERIAR_ExGMAC);
+            mac_ocp_write(tp, 0xE02C, 0x1880);
+            mac_ocp_write(tp, 0xE02E, 0x4880);
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_26:
+            rtl8168_eri_write(ioaddr, 0x5C0, 1, 0xFA, ERIAR_ExGMAC);
+            break;
+    }
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_26:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            if (tp->org_pci_offset_99 & BIT_2) {
                 csi_tmp = rtl8168_eri_read(ioaddr, 0x5C8, 1, ERIAR_ExGMAC);
                 csi_tmp |= BIT_0;
                 rtl8168_eri_write(ioaddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
-                break;
-        }
-
-        switch (tp->mcfg) {
+            }
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_23:
-                rtl8168_eri_write(ioaddr, 0x2E8, 2, 0x883C, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2EA, 2, 0x8C12, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2EC, 2, 0x9003, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2E2, 2, 0x883C, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2E4, 2, 0x8C12, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2E6, 2, 0x9003, ERIAR_ExGMAC);
-                break;
+            rtl8168_eri_write(ioaddr, 0x2E8, 2, 0x883C, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2EA, 2, 0x8C12, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2EC, 2, 0x9003, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2E2, 2, 0x883C, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2E4, 2, 0x8C12, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2E6, 2, 0x9003, ERIAR_ExGMAC);
+            break;
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_24:
@@ -3349,42 +3361,39 @@ rtl8168_init_pci_offset_99(struct rtl8168_private *tp)
         case CFG_METHOD_28:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                rtl8168_eri_write(ioaddr, 0x2E8, 2, 0x9003, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2EA, 2, 0x9003, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2EC, 2, 0x9003, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2E2, 2, 0x883C, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2E4, 2, 0x8C12, ERIAR_ExGMAC);
-                rtl8168_eri_write(ioaddr, 0x2E6, 2, 0x9003, ERIAR_ExGMAC);
-                break;
-        }
-
-        switch (tp->mcfg) {
+            rtl8168_eri_write(ioaddr, 0x2E8, 2, 0x9003, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2EA, 2, 0x9003, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2EC, 2, 0x9003, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2E2, 2, 0x883C, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2E4, 2, 0x8C12, ERIAR_ExGMAC);
+            rtl8168_eri_write(ioaddr, 0x2E6, 2, 0x9003, ERIAR_ExGMAC);
+            break;
+    }
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_21:
+        case CFG_METHOD_22:
+        case CFG_METHOD_24:
+        case CFG_METHOD_25:
+        case CFG_METHOD_26:
+        case CFG_METHOD_27:
+        case CFG_METHOD_28:
+            csi_tmp = rtl8168_eri_read(ioaddr, 0x3FA, 2, ERIAR_ExGMAC);
+            csi_tmp |= BIT_14;
+            rtl8168_eri_write(ioaddr, 0x3FA, 2, csi_tmp, ERIAR_ExGMAC);
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_26:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
+            if (tp->org_pci_offset_99 & BIT_2)
                 RTL_W8(0xB6, RTL_R8(0xB6) | BIT_0);
-
-                csi_tmp = rtl8168_eri_read(ioaddr, 0x5C8, 1, ERIAR_ExGMAC);
-                csi_tmp |= BIT_0;
-                rtl8168_eri_write(ioaddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
-                break;
-        }
-
-        switch (tp->mcfg) {
-        case CFG_METHOD_21:
-        case CFG_METHOD_22:
-        case CFG_METHOD_24:
-        case CFG_METHOD_25:
-        case CFG_METHOD_26:
-        case CFG_METHOD_27:
-        case CFG_METHOD_28:
-                csi_tmp = rtl8168_eri_read(ioaddr, 0x3FA, 2, ERIAR_ExGMAC);
-                csi_tmp |= BIT_14;
-                rtl8168_eri_write(ioaddr, 0x3FA, 2, csi_tmp, ERIAR_ExGMAC);
-                break;
-        }
-
-        rtl8168_enable_pci_offset_99(tp);
+            break;
+    }
+    
+    rtl8168_enable_pci_offset_99(tp);
 }
 
 #endif  /* DISABLED_CODE */
@@ -3920,8 +3929,6 @@ rtl8168_get_regs_len(struct net_device *dev)
         return R8168_REGS_DUMP_SIZE;
 }
 
-#endif /* DISABLED_CODE */
-
 int
 rtl8168_set_speed_xmii(struct net_device *dev,
                        u8 autoneg,
@@ -4044,8 +4051,6 @@ rtl8168_set_speed(struct net_device *dev,
 
         return ret;
 }
-
-#if DISABLED_CODE
 
 static int
 rtl8168_set_settings(struct net_device *dev,
@@ -4697,99 +4702,99 @@ static const struct ethtool_ops rtl8168_ethtool_ops = {
 
 static int rtl8168_enable_EEE(struct rtl8168_private *tp)
 {
-        void __iomem *ioaddr = tp->mmio_addr;
-        int ret;
-        u16 data;
-        u16 PhyRegValue;
-        u32 WaitCnt;
-        //unsigned long flags;
-
-        ret = 0;
-        switch (tp->mcfg) {
+    void __iomem *ioaddr = tp->mmio_addr;
+    int ret;
+    u16 data;
+    u16 PhyRegValue;
+    u32 WaitCnt;
+    //unsigned long flags;
+    
+    ret = 0;
+    switch (tp->mcfg) {
         case CFG_METHOD_14:
         case CFG_METHOD_15:
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0007);
+            mdio_write(tp, 0x1E, 0x0020);
+            data = mdio_read(tp, 0x15) | 0x0100;
+            mdio_write(tp, 0x15, data);
+            mdio_write(tp, 0x1F, 0x0005);
+            mdio_write(tp, 0x05, 0x8B85);
+            data = mdio_read(tp, 0x06) | 0x2000;
+            mdio_write(tp, 0x06, data);
+            mdio_write(tp, 0x1F, 0x0006);
+            mdio_write(tp, 0x00, 0x5A30);
+            mdio_write(tp, 0x1F, 0x0000);
+            mdio_write(tp, 0x0D, 0x0007);
+            mdio_write(tp, 0x0E, 0x003C);
+            mdio_write(tp, 0x0D, 0x4007);
+            mdio_write(tp, 0x0E, 0x0006);
+            mdio_write(tp, 0x0D, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            if ((RTL_R8(Config4)&0x40) && (RTL_R8(0x6D) & BIT_7)) {
                 spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0007);
-                mdio_write(tp, 0x1E, 0x0020);
-                data = mdio_read(tp, 0x15) | 0x0100;
-                mdio_write(tp, 0x15, data);
                 mdio_write(tp, 0x1F, 0x0005);
-                mdio_write(tp, 0x05, 0x8B85);
-                data = mdio_read(tp, 0x06) | 0x2000;
+                mdio_write(tp, 0x05, 0x8AC8);
+                mdio_write(tp, 0x06, RTL_R16(CustomLED));
+                mdio_write(tp, 0x05, 0x8B82);
+                data = mdio_read(tp, 0x06) | 0x0010;
+                mdio_write(tp, 0x05, 0x8B82);
                 mdio_write(tp, 0x06, data);
-                mdio_write(tp, 0x1F, 0x0006);
-                mdio_write(tp, 0x00, 0x5A30);
                 mdio_write(tp, 0x1F, 0x0000);
-                mdio_write(tp, 0x0D, 0x0007);
-                mdio_write(tp, 0x0E, 0x003C);
-                mdio_write(tp, 0x0D, 0x4007);
-                mdio_write(tp, 0x0E, 0x0006);
-                mdio_write(tp, 0x0D, 0x0000);
                 spin_unlock_irqrestore(&tp->phy_lock, flags);
-                if ((RTL_R8(Config4)&0x40) && (RTL_R8(0x6D) & BIT_7)) {
-                        spin_lock_irqsave(&tp->phy_lock, flags);
-                        mdio_write(tp, 0x1F, 0x0005);
-                        mdio_write(tp, 0x05, 0x8AC8);
-                        mdio_write(tp, 0x06, RTL_R16(CustomLED));
-                        mdio_write(tp, 0x05, 0x8B82);
-                        data = mdio_read(tp, 0x06) | 0x0010;
-                        mdio_write(tp, 0x05, 0x8B82);
-                        mdio_write(tp, 0x06, data);
-                        mdio_write(tp, 0x1F, 0x0000);
-                        spin_unlock_irqrestore(&tp->phy_lock, flags);
-                }
-                break;
-
+            }
+            break;
+            
         case CFG_METHOD_16:
         case CFG_METHOD_17:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                data = rtl8168_eri_read(ioaddr,0x1B0 ,4,ERIAR_ExGMAC) | 0x0003;
-                rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
-                mdio_write(tp,0x1F , 0x0004);
-                mdio_write(tp,0x1F , 0x0007);
-                mdio_write(tp,0x1E , 0x0020);
-                data = mdio_read(tp, 0x15)|0x0100;
-                mdio_write(tp,0x15 , data);
-                mdio_write(tp,0x1F , 0x0002);
-                mdio_write(tp,0x1F , 0x0005);
-                mdio_write(tp,0x05 , 0x8B85);
-                data = mdio_read(tp, 0x06)|0x2000;
-                mdio_write(tp,0x06 , data);
-                mdio_write(tp,0x1F , 0x0000);
-                mdio_write(tp,0x0D , 0x0007);
-                mdio_write(tp,0x0E , 0x003C);
-                mdio_write(tp,0x0D , 0x4007);
-                mdio_write(tp,0x0E , 0x0006);
-                mdio_write(tp,0x1D , 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            data = rtl8168_eri_read(ioaddr,0x1B0 ,4,ERIAR_ExGMAC) | 0x0003;
+            rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
+            mdio_write(tp,0x1F , 0x0004);
+            mdio_write(tp,0x1F , 0x0007);
+            mdio_write(tp,0x1E , 0x0020);
+            data = mdio_read(tp, 0x15)|0x0100;
+            mdio_write(tp,0x15 , data);
+            mdio_write(tp,0x1F , 0x0002);
+            mdio_write(tp,0x1F , 0x0005);
+            mdio_write(tp,0x05 , 0x8B85);
+            data = mdio_read(tp, 0x06)|0x2000;
+            mdio_write(tp,0x06 , data);
+            mdio_write(tp,0x1F , 0x0000);
+            mdio_write(tp,0x0D , 0x0007);
+            mdio_write(tp,0x0E , 0x003C);
+            mdio_write(tp,0x0D , 0x4007);
+            mdio_write(tp,0x0E , 0x0006);
+            mdio_write(tp,0x1D , 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+            
         case CFG_METHOD_18:
         case CFG_METHOD_19:
         case CFG_METHOD_20:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                data = rtl8168_eri_read(ioaddr,0x1B0 ,4,ERIAR_ExGMAC);
-                data |= BIT_1 | BIT_0;
-                rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
-                mdio_write(tp, 0x1F, 0x0007);
-                mdio_write(tp, 0x1e, 0x0020);
-                data = mdio_read(tp, 0x15);
-                data |= BIT_8;
-                mdio_write(tp, 0x15, data);
-                mdio_write(tp, 0x1F, 0x0005);
-                mdio_write(tp, 0x05, 0x8B85);
-                data = mdio_read(tp, 0x06);
-                data |= BIT_13;
-                mdio_write(tp, 0x06, data);
-                mdio_write(tp, 0x1F, 0x0000);
-                mdio_write(tp, 0x0D, 0x0007);
-                mdio_write(tp, 0x0E, 0x003C);
-                mdio_write(tp, 0x0D, 0x4007);
-                mdio_write(tp, 0x0E, 0x0006);
-                mdio_write(tp, 0x0D, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            data = rtl8168_eri_read(ioaddr,0x1B0 ,4,ERIAR_ExGMAC);
+            data |= BIT_1 | BIT_0;
+            rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
+            mdio_write(tp, 0x1F, 0x0007);
+            mdio_write(tp, 0x1e, 0x0020);
+            data = mdio_read(tp, 0x15);
+            data |= BIT_8;
+            mdio_write(tp, 0x15, data);
+            mdio_write(tp, 0x1F, 0x0005);
+            mdio_write(tp, 0x05, 0x8B85);
+            data = mdio_read(tp, 0x06);
+            data |= BIT_13;
+            mdio_write(tp, 0x06, data);
+            mdio_write(tp, 0x1F, 0x0000);
+            mdio_write(tp, 0x0D, 0x0007);
+            mdio_write(tp, 0x0E, 0x003C);
+            mdio_write(tp, 0x0D, 0x4007);
+            mdio_write(tp, 0x0E, 0x0006);
+            mdio_write(tp, 0x0D, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+            
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_23:
@@ -4800,254 +4805,255 @@ static int rtl8168_enable_EEE(struct rtl8168_private *tp)
         case CFG_METHOD_28:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                data = rtl8168_eri_read(ioaddr, 0x1B0, 4, ERIAR_ExGMAC);
-                data |= BIT_1 | BIT_0;
-                rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
-                mdio_write(tp, 0x1F, 0x0A43);
-                data = mdio_read(tp, 0x11);
-                mdio_write(tp, 0x11, data | BIT_4);
-                mdio_write(tp, 0x1F, 0x0A5D);
-                mdio_write(tp, 0x10, 0x0006);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            data = rtl8168_eri_read(ioaddr, 0x1B0, 4, ERIAR_ExGMAC);
+            data |= BIT_1 | BIT_0;
+            rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
+            mdio_write(tp, 0x1F, 0x0A43);
+            data = mdio_read(tp, 0x11);
+            mdio_write(tp, 0x11, data | BIT_4);
+            mdio_write(tp, 0x1F, 0x0A5D);
+            mdio_write(tp, 0x10, 0x0006);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+            
         default:
-//      dev_printk(KERN_DEBUG, &tp->pci_dev->dev, "Not Support EEE\n");
-                ret = -EOPNOTSUPP;
-                break;
-        }
-
-        switch (tp->mcfg) {
+            //      dev_printk(KERN_DEBUG, &tp->pci_dev->dev, "Not Support EEE\n");
+            ret = -EOPNOTSUPP;
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0A4A);
-                SetEthPhyBit(tp, 0x11, BIT_9);
-                mdio_write(tp, 0x1F, 0x0A42);
-                SetEthPhyBit(tp, 0x14, BIT_7);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-        }
-
-        /*Advanced EEE*/
-        switch (tp->mcfg) {
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0A4A);
+            SetEthPhyBit(tp, 0x11, BIT_9);
+            mdio_write(tp, 0x1F, 0x0A42);
+            SetEthPhyBit(tp, 0x14, BIT_7);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+    }
+    
+    /*Advanced EEE*/
+    switch (tp->mcfg) {
         case CFG_METHOD_24:
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp,0x1F, 0x0B82);
-                SetEthPhyBit(tp, 0x10, BIT_4);
-                mdio_write(tp, 0x1F, 0x0000);
-
-                mdio_write(tp,0x1F, 0x0B80);
-                WaitCnt = 0;
-                do {
-                        PhyRegValue = mdio_read(tp, 0x10);
-                        PhyRegValue &= 0x0040;
-                        udelay(100);
-                        WaitCnt++;
-                } while(PhyRegValue != 0x0040 && WaitCnt <1000);
-
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-        }
-
-        switch (tp->mcfg) {
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp,0x1F, 0x0B82);
+            SetEthPhyBit(tp, 0x10, BIT_4);
+            mdio_write(tp, 0x1F, 0x0000);
+            
+            mdio_write(tp,0x1F, 0x0B80);
+            WaitCnt = 0;
+            do {
+                PhyRegValue = mdio_read(tp, 0x10);
+                PhyRegValue &= 0x0040;
+                udelay(100);
+                WaitCnt++;
+            } while(PhyRegValue != 0x0040 && WaitCnt <1000);
+            
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_25:
-                rtl8168_eri_write(ioaddr, 0x1EA, 1, 0xFA, ERIAR_ExGMAC);
-
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0A43);
-                data = mdio_read(tp, 0x10);
-                if (data & BIT_10) {
-                        mdio_write(tp, 0x1F, 0x0A42);
-                        data = mdio_read(tp, 0x16);
-                        data &= ~(BIT_1);
-                        mdio_write(tp, 0x16, data);
-                } else {
-                        mdio_write(tp, 0x1F, 0x0A42);
-                        data = mdio_read(tp, 0x16);
-                        data |= BIT_1;
-                        mdio_write(tp, 0x16, data);
-                }
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
+            rtl8168_eri_write(ioaddr, 0x1EA, 1, 0xFA, ERIAR_ExGMAC);
+            
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0A43);
+            data = mdio_read(tp, 0x10);
+            if (data & BIT_10) {
+                mdio_write(tp, 0x1F, 0x0A42);
+                data = mdio_read(tp, 0x16);
+                data &= ~(BIT_1);
+                mdio_write(tp, 0x16, data);
+            } else {
+                mdio_write(tp, 0x1F, 0x0A42);
+                data = mdio_read(tp, 0x16);
+                data |= BIT_1;
+                mdio_write(tp, 0x16, data);
+            }
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
         case CFG_METHOD_26:
-                data = mac_ocp_read(tp, 0xE052);
-                data |= BIT_0;
-                mac_ocp_write(tp, 0xE052, data);
-                data = mac_ocp_read(tp, 0xE056);
-                data &= 0xFF0F;
-                data |= (BIT_4 | BIT_5 | BIT_6);
-                mac_ocp_write(tp, 0xE056, data);
-
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0A43);
-                data = mdio_read(tp, 0x10);
-                if (data & BIT_10) {
-                        mdio_write(tp, 0x1F, 0x0A42);
-                        data = mdio_read(tp, 0x16);
-                        data &= ~(BIT_1);
-                        mdio_write(tp, 0x16, data);
-                } else {
-                        mdio_write(tp, 0x1F, 0x0A42);
-                        data = mdio_read(tp, 0x16);
-                        data |= BIT_1;
-                        mdio_write(tp, 0x16, data);
-                }
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
+            data = mac_ocp_read(tp, 0xE052);
+            data |= BIT_0;
+            mac_ocp_write(tp, 0xE052, data);
+            data = mac_ocp_read(tp, 0xE056);
+            data &= 0xFF0F;
+            data |= (BIT_4 | BIT_5 | BIT_6);
+            mac_ocp_write(tp, 0xE056, data);
+            
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0A43);
+            data = mdio_read(tp, 0x10);
+            if (data & BIT_10) {
+                mdio_write(tp, 0x1F, 0x0A42);
+                data = mdio_read(tp, 0x16);
+                data &= ~(BIT_1);
+                mdio_write(tp, 0x16, data);
+            } else {
+                mdio_write(tp, 0x1F, 0x0A42);
+                data = mdio_read(tp, 0x16);
+                data |= BIT_1;
+                mdio_write(tp, 0x16, data);
+            }
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
         case CFG_METHOD_27:
         case CFG_METHOD_28:
-                OOB_mutex_lock(tp);
-                data = mac_ocp_read(tp, 0xE052);
-                data |= BIT_0;
-                mac_ocp_write(tp, 0xE052, data);
-                OOB_mutex_unlock(tp);
-                data = mac_ocp_read(tp, 0xE056);
-                data &= 0xFF0F;
-                data |= (BIT_4 | BIT_5 | BIT_6);
-                mac_ocp_write(tp, 0xE056, data);
-                break;
+            OOB_mutex_lock(tp);
+            data = mac_ocp_read(tp, 0xE052);
+            data &= ~BIT_0;
+            mac_ocp_write(tp, 0xE052, data);
+            OOB_mutex_unlock(tp);
+            data = mac_ocp_read(tp, 0xE056);
+            data &= 0xFF0F;
+            data |= (BIT_4 | BIT_5 | BIT_6);
+            mac_ocp_write(tp, 0xE056, data);
+            break;
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                data = mac_ocp_read(tp, 0xE052);
-                data |= BIT_0;
-                mac_ocp_write(tp, 0xE052, data);
-
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0A43);
-                data = mdio_read(tp, 0x10) | BIT_15;
-                mdio_write(tp, 0x10, data);
-
-                mdio_write(tp, 0x1F, 0x0A44);
-                data = mdio_read( tp, 0x11 ) | BIT_12 | BIT_13| BIT_14;
-                mdio_write(tp, 0x11, data);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-        }
-
-        switch (tp->mcfg) {
+            data = mac_ocp_read(tp, 0xE052);
+            data |= BIT_0;
+            mac_ocp_write(tp, 0xE052, data);
+            
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0A43);
+            data = mdio_read(tp, 0x10) | BIT_15;
+            mdio_write(tp, 0x10, data);
+            
+            mdio_write(tp, 0x1F, 0x0A44);
+            data = mdio_read(tp, 0x11) | BIT_13 | BIT_14;
+            data &= ~(BIT_12);
+            mdio_write(tp, 0x11, data);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_24:
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0B82);
-                ClearEthPhyBit(tp, 0x10, BIT_4);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-        }
-
-        return ret;
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0B82);
+            ClearEthPhyBit(tp, 0x10, BIT_4);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+    }
+    
+    return ret;
 }
 
 static int rtl8168_disable_EEE(struct rtl8168_private *tp)
 {
-        void __iomem *ioaddr = tp->mmio_addr;
-        int ret;
-        u16 data;
-        u16 PhyRegValue;
-        u32 WaitCnt;
-        //unsigned long flags;
-
-        ret = 0;
-        switch (tp->mcfg) {
+    void __iomem *ioaddr = tp->mmio_addr;
+    int ret;
+    u16 data;
+    u16 PhyRegValue;
+    u32 WaitCnt;
+    //unsigned long flags;
+    
+    ret = 0;
+    switch (tp->mcfg) {
         case CFG_METHOD_14:
         case CFG_METHOD_15:
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0005);
+            mdio_write(tp, 0x05, 0x8B85);
+            data = mdio_read(tp, 0x06) & ~0x2000;
+            mdio_write(tp, 0x06, data);
+            mdio_write(tp, 0x1F, 0x0007);
+            mdio_write(tp, 0x1E, 0x0020);
+            data = mdio_read(tp, 0x15) & ~0x0100;
+            mdio_write(tp, 0x15, data);
+            mdio_write(tp, 0x1F, 0x0006);
+            mdio_write(tp, 0x00, 0x5A00);
+            mdio_write(tp, 0x1F, 0x0000);
+            mdio_write(tp, 0x0D, 0x0007);
+            mdio_write(tp, 0x0E, 0x003C);
+            mdio_write(tp, 0x0D, 0x4007);
+            mdio_write(tp, 0x0E, 0x0000);
+            mdio_write(tp, 0x0D, 0x0000);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            if (RTL_R8(Config4) & 0x40) {
                 spin_lock_irqsave(&tp->phy_lock, flags);
                 mdio_write(tp, 0x1F, 0x0005);
-                mdio_write(tp, 0x05, 0x8B85);
-                data = mdio_read(tp, 0x06) & ~0x2000;
+                mdio_write(tp, 0x05, 0x8B82);
+                data = mdio_read(tp, 0x06) & ~0x0010;
+                mdio_write(tp, 0x05, 0x8B82);
                 mdio_write(tp, 0x06, data);
-                mdio_write(tp, 0x1F, 0x0007);
-                mdio_write(tp, 0x1E, 0x0020);
-                data = mdio_read(tp, 0x15) & ~0x0100;
-                mdio_write(tp, 0x15, data);
-                mdio_write(tp, 0x1F, 0x0006);
-                mdio_write(tp, 0x00, 0x5A00);
-                mdio_write(tp, 0x1F, 0x0000);
-                mdio_write(tp, 0x0D, 0x0007);
-                mdio_write(tp, 0x0E, 0x003C);
-                mdio_write(tp, 0x0D, 0x4007);
-                mdio_write(tp, 0x0E, 0x0000);
-                mdio_write(tp, 0x0D, 0x0000);
                 mdio_write(tp, 0x1F, 0x0000);
                 spin_unlock_irqrestore(&tp->phy_lock, flags);
-                if (RTL_R8(Config4) & 0x40) {
-                        spin_lock_irqsave(&tp->phy_lock, flags);
-                        mdio_write(tp, 0x1F, 0x0005);
-                        mdio_write(tp, 0x05, 0x8B82);
-                        data = mdio_read(tp, 0x06) & ~0x0010;
-                        mdio_write(tp, 0x05, 0x8B82);
-                        mdio_write(tp, 0x06, data);
-                        mdio_write(tp, 0x1F, 0x0000);
-                        spin_unlock_irqrestore(&tp->phy_lock, flags);
-                }
-                break;
-
+            }
+            break;
+            
         case CFG_METHOD_16:
         case CFG_METHOD_17:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                data = rtl8168_eri_read(ioaddr,0x1B0 ,4,ERIAR_ExGMAC)& ~0x0003;
-                rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
-                mdio_write(tp, 0x1F, 0x0005);
-                mdio_write(tp, 0x05, 0x8B85);
-                data = mdio_read(tp, 0x06) & ~0x2000;
-                mdio_write(tp, 0x06, data);
-                mdio_write(tp, 0x1F, 0x0004);
-                mdio_write(tp, 0x1F, 0x0007);
-                mdio_write(tp, 0x1E, 0x0020);
-                data = mdio_read(tp, 0x15) & ~0x0100;
-                mdio_write(tp,0x15 , data);
-                mdio_write(tp, 0x1F, 0x0002);
-                mdio_write(tp, 0x1F, 0x0000);
-                mdio_write(tp, 0x0D, 0x0007);
-                mdio_write(tp, 0x0E, 0x003C);
-                mdio_write(tp, 0x0D, 0x4007);
-                mdio_write(tp, 0x0E, 0x0000);
-                mdio_write(tp, 0x0D, 0x0000);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            data = rtl8168_eri_read(ioaddr,0x1B0 ,4,ERIAR_ExGMAC)& ~0x0003;
+            rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
+            mdio_write(tp, 0x1F, 0x0005);
+            mdio_write(tp, 0x05, 0x8B85);
+            data = mdio_read(tp, 0x06) & ~0x2000;
+            mdio_write(tp, 0x06, data);
+            mdio_write(tp, 0x1F, 0x0004);
+            mdio_write(tp, 0x1F, 0x0007);
+            mdio_write(tp, 0x1E, 0x0020);
+            data = mdio_read(tp, 0x15) & ~0x0100;
+            mdio_write(tp,0x15 , data);
+            mdio_write(tp, 0x1F, 0x0002);
+            mdio_write(tp, 0x1F, 0x0000);
+            mdio_write(tp, 0x0D, 0x0007);
+            mdio_write(tp, 0x0E, 0x003C);
+            mdio_write(tp, 0x0D, 0x4007);
+            mdio_write(tp, 0x0E, 0x0000);
+            mdio_write(tp, 0x0D, 0x0000);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+            
         case CFG_METHOD_18:
         case CFG_METHOD_19:
         case CFG_METHOD_20:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                data = rtl8168_eri_read(ioaddr,0x1B0 ,4,ERIAR_ExGMAC);
-                data &= ~(BIT_1 | BIT_0);
-                rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
-                mdio_write(tp, 0x1F, 0x0005);
-                mdio_write(tp, 0x05, 0x8B85);
-                data = mdio_read(tp, 0x06);
-                data &= ~BIT_13;
-                mdio_write(tp, 0x06, data);
-                mdio_write(tp, 0x1F, 0x0007);
-                mdio_write(tp, 0x1e, 0x0020);
-                data = mdio_read(tp, 0x15);
-                data &= ~BIT_8;
-                mdio_write(tp, 0x15, data);
-                mdio_write(tp, 0x1F, 0x0000);
-                mdio_write(tp, 0x0D, 0x0007);
-                mdio_write(tp, 0x0E, 0x003C);
-                mdio_write(tp, 0x0D, 0x4007);
-                mdio_write(tp, 0x0E, 0x0000);
-                mdio_write(tp, 0x0D, 0x0000);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            data = rtl8168_eri_read(ioaddr,0x1B0 ,4,ERIAR_ExGMAC);
+            data &= ~(BIT_1 | BIT_0);
+            rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
+            mdio_write(tp, 0x1F, 0x0005);
+            mdio_write(tp, 0x05, 0x8B85);
+            data = mdio_read(tp, 0x06);
+            data &= ~BIT_13;
+            mdio_write(tp, 0x06, data);
+            mdio_write(tp, 0x1F, 0x0007);
+            mdio_write(tp, 0x1e, 0x0020);
+            data = mdio_read(tp, 0x15);
+            data &= ~BIT_8;
+            mdio_write(tp, 0x15, data);
+            mdio_write(tp, 0x1F, 0x0000);
+            mdio_write(tp, 0x0D, 0x0007);
+            mdio_write(tp, 0x0E, 0x003C);
+            mdio_write(tp, 0x0D, 0x4007);
+            mdio_write(tp, 0x0E, 0x0000);
+            mdio_write(tp, 0x0D, 0x0000);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+            
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_23:
@@ -5058,128 +5064,128 @@ static int rtl8168_disable_EEE(struct rtl8168_private *tp)
         case CFG_METHOD_28:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                data = rtl8168_eri_read(ioaddr, 0x1B0, 4, ERIAR_ExGMAC);
-                data &= ~(BIT_1 | BIT_0);
-                rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
-                mdio_write(tp, 0x1F, 0x0A43);
-                data = mdio_read(tp, 0x11);
-                mdio_write(tp, 0x11, data & ~BIT_4);
-                mdio_write(tp, 0x1F, 0x0A5D);
-                mdio_write(tp, 0x10, 0x0000);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            data = rtl8168_eri_read(ioaddr, 0x1B0, 4, ERIAR_ExGMAC);
+            data &= ~(BIT_1 | BIT_0);
+            rtl8168_eri_write(ioaddr, 0x1B0, 4, data, ERIAR_ExGMAC);
+            mdio_write(tp, 0x1F, 0x0A43);
+            data = mdio_read(tp, 0x11);
+            mdio_write(tp, 0x11, data & ~BIT_4);
+            mdio_write(tp, 0x1F, 0x0A5D);
+            mdio_write(tp, 0x10, 0x0000);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+            
         default:
-//      dev_printk(KERN_DEBUG, &tp->pci_dev->dev, "Not Support EEE\n");
-                ret = -EOPNOTSUPP;
-                break;
-        }
-
-        switch (tp->mcfg) {
+            //      dev_printk(KERN_DEBUG, &tp->pci_dev->dev, "Not Support EEE\n");
+            ret = -EOPNOTSUPP;
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0A42);
-                ClearEthPhyBit(tp, 0x14, BIT_7);
-                mdio_write(tp, 0x1F, 0x0A4A);
-                ClearEthPhyBit(tp, 0x11, BIT_9);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-        }
-
-        /*Advanced EEE*/
-        switch (tp->mcfg) {
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0A42);
+            ClearEthPhyBit(tp, 0x14, BIT_7);
+            mdio_write(tp, 0x1F, 0x0A4A);
+            ClearEthPhyBit(tp, 0x11, BIT_9);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+    }
+    
+    /*Advanced EEE*/
+    switch (tp->mcfg) {
         case CFG_METHOD_24:
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp,0x1F, 0x0B82);
-                SetEthPhyBit(tp, 0x10, BIT_4);
-                mdio_write(tp, 0x1F, 0x0000);
-
-                mdio_write(tp,0x1F, 0x0B80);
-                WaitCnt = 0;
-                do {
-                        PhyRegValue = mdio_read(tp, 0x10);
-                        PhyRegValue &= 0x0040;
-                        udelay(100);
-                        WaitCnt++;
-                } while(PhyRegValue != 0x0040 && WaitCnt <1000);
-
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-        }
-
-        switch (tp->mcfg) {
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp,0x1F, 0x0B82);
+            SetEthPhyBit(tp, 0x10, BIT_4);
+            mdio_write(tp, 0x1F, 0x0000);
+            
+            mdio_write(tp,0x1F, 0x0B80);
+            WaitCnt = 0;
+            do {
+                PhyRegValue = mdio_read(tp, 0x10);
+                PhyRegValue &= 0x0040;
+                udelay(100);
+                WaitCnt++;
+            } while(PhyRegValue != 0x0040 && WaitCnt <1000);
+            
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_25:
-                rtl8168_eri_write(ioaddr, 0x1EA, 1, 0x00, ERIAR_ExGMAC);
-
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0A42);
-                data = mdio_read(tp, 0x16);
-                data &= ~(BIT_1);
-                mdio_write(tp, 0x16, data);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
+            rtl8168_eri_write(ioaddr, 0x1EA, 1, 0x00, ERIAR_ExGMAC);
+            
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0A42);
+            data = mdio_read(tp, 0x16);
+            data &= ~(BIT_1);
+            mdio_write(tp, 0x16, data);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
         case CFG_METHOD_26:
-                data = mac_ocp_read(tp, 0xE052);
-                data &= ~(BIT_0);
-                mac_ocp_write(tp, 0xE052, data);
-
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0A42);
-                data = mdio_read(tp, 0x16);
-                data &= ~(BIT_1);
-                mdio_write(tp, 0x16, data);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
+            data = mac_ocp_read(tp, 0xE052);
+            data &= ~(BIT_0);
+            mac_ocp_write(tp, 0xE052, data);
+            
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0A42);
+            data = mdio_read(tp, 0x16);
+            data &= ~(BIT_1);
+            mdio_write(tp, 0x16, data);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
         case CFG_METHOD_27:
         case CFG_METHOD_28:
-                data = mac_ocp_read(tp, 0xE052);
-                data &= ~(BIT_0);
-                mac_ocp_write(tp, 0xE052, data);
-                break;
+            data = mac_ocp_read(tp, 0xE052);
+            data &= ~(BIT_0);
+            mac_ocp_write(tp, 0xE052, data);
+            break;
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                data = mac_ocp_read(tp, 0xE052);
-                data &= ~(BIT_0);
-                mac_ocp_write(tp, 0xE052, data);
-
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0A43);
-                data = mdio_read(tp, 0x10) & ~(BIT_15);
-                mdio_write(tp, 0x10, data);
-
-                mdio_write(tp, 0x1F, 0x0A44);
-                data = mdio_read( tp, 0x11 ) & ~(BIT_12 | BIT_13 | BIT_14);
-                mdio_write(tp, 0x11, data);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-        }
-
-        switch (tp->mcfg) {
+            data = mac_ocp_read(tp, 0xE052);
+            data &= ~(BIT_0);
+            mac_ocp_write(tp, 0xE052, data);
+            
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0A43);
+            data = mdio_read(tp, 0x10) & ~(BIT_15);
+            mdio_write(tp, 0x10, data);
+            
+            mdio_write(tp, 0x1F, 0x0A44);
+            data = mdio_read(tp, 0x11) & ~(BIT_12 | BIT_13 | BIT_14);
+            mdio_write(tp, 0x11, data);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_24:
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                spin_lock_irqsave(&tp->phy_lock, flags);
-                mdio_write(tp, 0x1F, 0x0B82);
-                ClearEthPhyBit(tp, 0x10, BIT_4);
-                mdio_write(tp, 0x1F, 0x0000);
-                spin_unlock_irqrestore(&tp->phy_lock, flags);
-                break;
-        }
-
-        return ret;
+            spin_lock_irqsave(&tp->phy_lock, flags);
+            mdio_write(tp, 0x1F, 0x0B82);
+            ClearEthPhyBit(tp, 0x10, BIT_4);
+            mdio_write(tp, 0x1F, 0x0000);
+            spin_unlock_irqrestore(&tp->phy_lock, flags);
+            break;
+    }
+    
+    return ret;
 }
 
 #if 0
@@ -5752,103 +5758,105 @@ DisableNowIsOob(struct rtl8168_private *tp)
 void
 rtl8168_exit_oob(struct net_device *dev)
 {
-        struct rtl8168_private *tp = netdev_priv(dev);
-        void __iomem *ioaddr = tp->mmio_addr;
-        u16 data16;
-
-        switch (tp->mcfg) {
+    struct rtl8168_private *tp = netdev_priv(dev);
+    void __iomem *ioaddr = tp->mmio_addr;
+    u16 data16;
+    
+    RTL_W32(RxConfig, RTL_R32(RxConfig) & ~(AcceptErr | AcceptRunt | AcceptBroadcast | AcceptMulticast | AcceptMyPhys |  AcceptAllPhys));
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_23:
         case CFG_METHOD_27:
         case CFG_METHOD_28:
-                Dash2DisableTxRx(dev);
-                break;
-        }
-
-        switch (tp->mcfg) {
+            Dash2DisableTxRx(dev);
+            break;
+    }
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_11:
         case CFG_METHOD_12:
         case CFG_METHOD_13:
         case CFG_METHOD_23:
         case CFG_METHOD_27:
         case CFG_METHOD_28:
-                if (tp->DASH) {
-                        rtl8168_driver_stop(tp);
-                        rtl8168_driver_start(tp);
+            if (tp->DASH) {
+                rtl8168_driver_stop(tp);
+                rtl8168_driver_start(tp);
 #ifdef ENABLE_DASH_SUPPORT
-                        DashHwInit(dev);
+                DashHwInit(dev);
 #endif
-                }
-                break;
-        }
-
-        //Disable realwow  function
-        switch (tp->mcfg) {
+            }
+            break;
+    }
+    
+    //Disable realwow  function
+    switch (tp->mcfg) {
         case CFG_METHOD_18:
         case CFG_METHOD_19:
-                RTL_W32(MACOCP, 0xE5A90000);
-                RTL_W32(MACOCP, 0xF2100010);
-                break;
+            RTL_W32(MACOCP, 0xE5A90000);
+            RTL_W32(MACOCP, 0xF2100010);
+            break;
         case CFG_METHOD_20:
-                RTL_W32(MACOCP, 0xE5A90000);
-                RTL_W32(MACOCP, 0xE4640000);
-                RTL_W32(MACOCP, 0xF2100010);
-                break;
+            RTL_W32(MACOCP, 0xE5A90000);
+            RTL_W32(MACOCP, 0xE4640000);
+            RTL_W32(MACOCP, 0xF2100010);
+            break;
         case CFG_METHOD_21:
         case CFG_METHOD_22:
-                RTL_W32(MACOCP, 0x605E0000);
-                RTL_W32(MACOCP, (0xE05E << 16) | (RTL_R32(MACOCP) & 0xFFFE));
-                RTL_W32(MACOCP, 0xE9720000);
-                RTL_W32(MACOCP, 0xF2140010);
-                break;
+            RTL_W32(MACOCP, 0x605E0000);
+            RTL_W32(MACOCP, (0xE05E << 16) | (RTL_R32(MACOCP) & 0xFFFE));
+            RTL_W32(MACOCP, 0xE9720000);
+            RTL_W32(MACOCP, 0xF2140010);
+            break;
         case CFG_METHOD_26:
-                RTL_W32(MACOCP, 0xE05E00FF);
-                RTL_W32(MACOCP, 0xE9720000);
-                mac_ocp_write(tp, 0xE428, 0x0010);
-                break;
-        }
-
+            RTL_W32(MACOCP, 0xE05E00FF);
+            RTL_W32(MACOCP, 0xE9720000);
+            mac_ocp_write(tp, 0xE428, 0x0010);
+            break;
+    }
+    
 #ifndef ENABLE_REALWOW_SUPPORT
-        switch (tp->mcfg) {
+    switch (tp->mcfg) {
         case CFG_METHOD_21:
         case CFG_METHOD_22:
-                rtl8168_eri_write(ioaddr, 0x174, 2, 0x0000, ERIAR_ExGMAC);
-                mac_ocp_write(tp, 0xE428, 0x0010);
-                break;
+            rtl8168_eri_write(ioaddr, 0x174, 2, 0x0000, ERIAR_ExGMAC);
+            mac_ocp_write(tp, 0xE428, 0x0010);
+            break;
         case CFG_METHOD_24:
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_28:
-                rtl8168_eri_write(ioaddr, 0x174, 2, 0x00FF, ERIAR_ExGMAC);
-                mac_ocp_write(tp, 0xE428, 0x0010);
-                break;
+            rtl8168_eri_write(ioaddr, 0x174, 2, 0x00FF, ERIAR_ExGMAC);
+            mac_ocp_write(tp, 0xE428, 0x0010);
+            break;
         case CFG_METHOD_29:
         case CFG_METHOD_30: {
-                u32 csi_tmp;
-                csi_tmp = rtl8168_eri_read(ioaddr, 0x174, 2, ERIAR_ExGMAC);
-                csi_tmp &= ~(BIT_8);
-                csi_tmp |= (BIT_15);
-                rtl8168_eri_write(ioaddr, 0x174, 2, csi_tmp, ERIAR_ExGMAC);
-                mac_ocp_write(tp, 0xE428, 0x0010);
+            u32 csi_tmp;
+            csi_tmp = rtl8168_eri_read(ioaddr, 0x174, 2, ERIAR_ExGMAC);
+            csi_tmp &= ~(BIT_8);
+            csi_tmp |= (BIT_15);
+            rtl8168_eri_write(ioaddr, 0x174, 2, csi_tmp, ERIAR_ExGMAC);
+            mac_ocp_write(tp, 0xE428, 0x0010);
         }
-        break;
-        }
+            break;
+    }
 #endif //ENABLE_REALWOW_SUPPORT
-
+    
 #ifdef ENABLE_REALWOW_SUPPORT
-        realwow_hw_init(dev);
+    realwow_hw_init(dev);
 #endif
-
-        rtl8168_nic_reset(dev);
-
-        switch (tp->mcfg) {
+    
+    rtl8168_nic_reset(dev);
+    
+    switch (tp->mcfg) {
         case CFG_METHOD_20:
-                rtl8168_wait_ll_share_fifo_ready(dev);
-
-                data16 = mac_ocp_read(tp, 0xD4DE) | BIT_15;
-                mac_ocp_write(tp, 0xD4DE, data16);
-
-                rtl8168_wait_ll_share_fifo_ready(dev);
-                break;
+            rtl8168_wait_ll_share_fifo_ready(dev);
+            
+            data16 = mac_ocp_read(tp, 0xD4DE) | BIT_15;
+            mac_ocp_write(tp, 0xD4DE, data16);
+            
+            rtl8168_wait_ll_share_fifo_ready(dev);
+            break;
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_23:
@@ -5859,36 +5867,36 @@ rtl8168_exit_oob(struct net_device *dev)
         case CFG_METHOD_28:
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                DisableNowIsOob(tp);
-
-                data16 = mac_ocp_read(tp, 0xE8DE) & ~BIT_14;
-                mac_ocp_write(tp, 0xE8DE, data16);
-                rtl8168_wait_ll_share_fifo_ready(dev);
-
-                data16 = mac_ocp_read(tp, 0xE8DE) | BIT_15;
-                mac_ocp_write(tp, 0xE8DE, data16);
-
-                rtl8168_wait_ll_share_fifo_ready(dev);
-                break;
-        }
-
-        //wait ups resume (phy state 2)
-        switch (tp->mcfg) {
+            DisableNowIsOob(tp);
+            
+            data16 = mac_ocp_read(tp, 0xE8DE) & ~BIT_14;
+            mac_ocp_write(tp, 0xE8DE, data16);
+            rtl8168_wait_ll_share_fifo_ready(dev);
+            
+            data16 = mac_ocp_read(tp, 0xE8DE) | BIT_15;
+            mac_ocp_write(tp, 0xE8DE, data16);
+            
+            rtl8168_wait_ll_share_fifo_ready(dev);
+            break;
+    }
+    
+    //wait ups resume (phy state 2)
+    switch (tp->mcfg) {
         case CFG_METHOD_29:
         case CFG_METHOD_30:
-                if (rtl8168_is_ups_resume(dev)) {
-                        //unsigned long flags;
-
-                        spin_lock_irqsave(&tp->phy_lock, flags);
-
-                        rtl8168_wait_phy_ups_resume(dev, 2);
-
-                        spin_unlock_irqrestore(&tp->phy_lock, flags);
-
-                        rtl8168_clear_ups_resume_bit(dev);
-                }
-                break;
-        };
+            if (rtl8168_is_ups_resume(dev)) {
+                //unsigned long flags;
+                
+                spin_lock_irqsave(&tp->phy_lock, flags);
+                
+                rtl8168_wait_phy_ups_resume(dev, 2);
+                
+                spin_unlock_irqrestore(&tp->phy_lock, flags);
+                
+                rtl8168_clear_ups_resume_bit(dev);
+            }
+            break;
+    };
 }
 
 void
@@ -6839,6 +6847,8 @@ rtl8168_hw_mac_mcu_config(struct net_device *dev)
                 mac_ocp_write(tp, 0xFC2A, 0x0210);
                 mac_ocp_write(tp, 0xFC2C, 0x1A04);
                 mac_ocp_write(tp, 0xFC2E, 0x0B26);
+                mac_ocp_write(tp, 0xFC30, 0x0F02);
+                mac_ocp_write(tp, 0xFC32, 0x0CA0);
 
                 mac_ocp_write(tp, 0xFC38, 0x003F);
         }
@@ -6958,288 +6968,288 @@ rtl8168_hw_init(struct net_device *dev)
 void
 rtl8168_hw_ephy_config(struct net_device *dev)
 {
-        struct rtl8168_private *tp = netdev_priv(dev);
-        void __iomem *ioaddr = tp->mmio_addr;
-        u16 ephy_data;
-
-
-        if (tp->mcfg == CFG_METHOD_4) {
-                /*Set EPHY registers    begin*/
-                /*Set EPHY register offset 0x02 bit 11 to 0 and bit 12 to 1*/
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x02);
-                ephy_data &= ~BIT_11;
-                ephy_data |= BIT_12;
-                rtl8168_ephy_write(ioaddr, 0x02, ephy_data);
-
-                /*Set EPHY register offset 0x03 bit 1 to 1*/
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x03);
-                ephy_data |= (1 << 1);
-                rtl8168_ephy_write(ioaddr, 0x03, ephy_data);
-
-                /*Set EPHY register offset 0x06 bit 7 to 0*/
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x06);
-                ephy_data &= ~(1 << 7);
-                rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
-                /*Set EPHY registers    end*/
-        } else if (tp->mcfg == CFG_METHOD_5) {
-                /* set EPHY registers */
-                SetPCIePhyBit(tp, 0x01, BIT_0);
-
-                ClearAndSetPCIePhyBit(tp,
-                                      0x03,
-                                      BIT_10,
-                                      BIT_5
-                                     );
-        } else if (tp->mcfg == CFG_METHOD_9) {
-                /* set EPHY registers */
-                rtl8168_ephy_write(ioaddr, 0x01, 0x7C7F);
-                rtl8168_ephy_write(ioaddr, 0x02, 0x011F);
-                if(tp->eeprom_type != EEPROM_TYPE_NONE) {
-                        ClearAndSetPCIePhyBit(tp,
-                                              0x03,
-                                              0xFFB0,
-                                              0x05B0
-                                             );
-                } else {
-                        ClearAndSetPCIePhyBit(tp,
-                                              0x03,
-                                              0xFFF0,
-                                              0x05F0
-                                             );
-                }
-                rtl8168_ephy_write(ioaddr, 0x06, 0xB271);
-                rtl8168_ephy_write(ioaddr, 0x07, 0xCE00);
-        } else if (tp->mcfg == CFG_METHOD_10) {
-                /* set EPHY registers */
-                rtl8168_ephy_write(ioaddr, 0x01, 0x6C7F);
-                rtl8168_ephy_write(ioaddr, 0x02, 0x011F);
-                ClearAndSetPCIePhyBit(tp,
-                                      0x03,
-                                      0xFFF0,
-                                      0x01B0
-                                     );
-                rtl8168_ephy_write(ioaddr, 0x1A, 0x0546);
-                rtl8168_ephy_write(ioaddr, 0x1C, 0x80C4);
-                rtl8168_ephy_write(ioaddr, 0x1D, 0x78E5);
-                rtl8168_ephy_write(ioaddr, 0x0A, 0x8100);
-        } else if (tp->mcfg == CFG_METHOD_12) {
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x0B);
-                rtl8168_ephy_write(ioaddr, 0x0B, ephy_data|0x48);
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
-                ephy_data &= ~0x20;
-                rtl8168_ephy_write(ioaddr, 0x19, ephy_data|0x50);
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
-                ephy_data &= ~0x100;
-                rtl8168_ephy_write(ioaddr, 0x0C, ephy_data|0x20);
-        } else if (tp->mcfg == CFG_METHOD_14 || tp->mcfg == CFG_METHOD_15) {
-                /* set EPHY registers */
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x00) & ~0x0200;
-                ephy_data |= 0x0100;
-                rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
-                ephy_data |= 0x0004;
-                rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x06) & ~0x0002;
-                ephy_data |= 0x0001;
-                rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x06);
-                ephy_data |= 0x0030;
-                rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x07);
-                ephy_data |= 0x2000;
-                rtl8168_ephy_write(ioaddr, 0x07, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
-                ephy_data |= 0x0020;
-                rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x03) & ~0x5800;
-                ephy_data |= 0x2000;
-                rtl8168_ephy_write(ioaddr, 0x03, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x03);
-                ephy_data |= 0x0001;
-                rtl8168_ephy_write(ioaddr, 0x03, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x01) & ~0x0800;
-                ephy_data |= 0x1000;
-                rtl8168_ephy_write(ioaddr, 0x01, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x07);
-                ephy_data |= 0x4000;
-                rtl8168_ephy_write(ioaddr, 0x07, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x1E);
-                ephy_data |= 0x2000;
-                rtl8168_ephy_write(ioaddr, 0x1E, ephy_data);
-
-                rtl8168_ephy_write(ioaddr, 0x19, 0xFE6C);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x0A);
-                ephy_data |= 0x0040;
-                rtl8168_ephy_write(ioaddr, 0x0A, ephy_data);
-        } else if (tp->mcfg == CFG_METHOD_16 || tp->mcfg == CFG_METHOD_17) {
-                if (tp->mcfg == CFG_METHOD_16) {
-                        rtl8168_ephy_write(ioaddr, 0x06, 0xF020);
-                        rtl8168_ephy_write(ioaddr, 0x07, 0x01FF);
-                        rtl8168_ephy_write(ioaddr, 0x00, 0x5027);
-                        rtl8168_ephy_write(ioaddr, 0x01, 0x0003);
-                        rtl8168_ephy_write(ioaddr, 0x02, 0x2D16);
-                        rtl8168_ephy_write(ioaddr, 0x03, 0x6D49);
-                        rtl8168_ephy_write(ioaddr, 0x08, 0x0006);
-                        rtl8168_ephy_write(ioaddr, 0x0A, 0x00C8);
-                }
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x09);
-                ephy_data |= BIT_7;
-                rtl8168_ephy_write(ioaddr, 0x09, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
-                ephy_data |= (BIT_2 | BIT_5 | BIT_9);
-                rtl8168_ephy_write(ioaddr, 0x19, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
-                ephy_data |= BIT_3;
-                rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
-                ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
-                ephy_data |= BIT_9;
-                rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
-        } else if (tp->mcfg == CFG_METHOD_18 || tp->mcfg == CFG_METHOD_19) {
-                if (tp->mcfg == CFG_METHOD_18) {
-                        ephy_data = rtl8168_ephy_read(ioaddr, 0x06);
-                        ephy_data |= BIT_5;
-                        ephy_data &= ~(BIT_7 | BIT_6);
-                        rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
-
-                        ephy_data = rtl8168_ephy_read(ioaddr, 0x08);
-                        ephy_data |= BIT_1;
-                        ephy_data &= ~BIT_0;
-                        rtl8168_ephy_write(ioaddr, 0x08, ephy_data);
-                }
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x09);
-                ephy_data |= BIT_7;
-                rtl8168_ephy_write(ioaddr, 0x09, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
-                ephy_data |= (BIT_2 | BIT_5 | BIT_9);
-                rtl8168_ephy_write(ioaddr, 0x19, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
-                ephy_data |= BIT_3;
-                rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
-                ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
-                ephy_data |= BIT_9;
-                rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
-        } else if (tp->mcfg == CFG_METHOD_20) {
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x06);
-                ephy_data |= BIT_5;
-                ephy_data &= ~(BIT_7 | BIT_6);
-                rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
-
-                rtl8168_ephy_write(ioaddr, 0x0f, 0x5200);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
-                ephy_data |= (BIT_2 | BIT_5 | BIT_9);
-                rtl8168_ephy_write(ioaddr, 0x19, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
-                ephy_data |= BIT_3;
-                rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
-                ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
-                ephy_data |= BIT_9;
-                rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
-        } else if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22) {
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
-                ephy_data &= ~(BIT_3);
-                rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
-                ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
-                ephy_data |= (BIT_5 | BIT_11);
-                rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x1E);
-                ephy_data |= (BIT_0);
-                rtl8168_ephy_write(ioaddr, 0x1E, ephy_data);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
-                ephy_data &= ~(BIT_15);
-                rtl8168_ephy_write(ioaddr, 0x19, ephy_data);
-        } else if (tp->mcfg == CFG_METHOD_25) {
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
-                ephy_data &= ~BIT_3;
-                rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
-                ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10| BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
-                ephy_data |= (BIT_5 | BIT_11);
-                rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
-
-                rtl8168_ephy_write(ioaddr, 0x19, 0x7C00);
-                rtl8168_ephy_write(ioaddr, 0x1E, 0x20EB);
-                rtl8168_ephy_write(ioaddr, 0x0D, 0x1666);
-                rtl8168_ephy_write(ioaddr, 0x00, 0x10A3);
-                rtl8168_ephy_write(ioaddr, 0x06, 0xF050);
-        } else if (tp->mcfg == CFG_METHOD_26) {
-                ClearPCIePhyBit(tp, 0x00, BIT_3);
-                ClearAndSetPCIePhyBit( tp,
-                                       0x0C,
-                                       (BIT_13 | BIT_12 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_4),
-                                       (BIT_5 | BIT_11)
-                                     );
-                ClearPCIePhyBit(tp, 0x1E, BIT_0);
-                ClearPCIePhyBit(tp, 0x19, BIT_15);
-
-                ClearPCIePhyBit(tp, 0x19, (BIT_5 | BIT_0));
-
-                SetPCIePhyBit(tp, 0x1E, BIT_13);
-                ClearPCIePhyBit(tp, 0x0D, BIT_8);
-                SetPCIePhyBit(tp, 0x0D, BIT_9);
-                SetPCIePhyBit(tp, 0x00, BIT_7);
-
-                SetPCIePhyBit(tp, 0x06, BIT_4);
-        } else if (tp->mcfg == CFG_METHOD_23) {
-                rtl8168_ephy_write(ioaddr, 0x00, 0x10AB);
-                rtl8168_ephy_write(ioaddr, 0x06, 0xf030);
-                rtl8168_ephy_write(ioaddr, 0x08, 0x2006);
-                rtl8168_ephy_write(ioaddr, 0x0D, 0x1666);
-
-                ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
-                ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
-                rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
-        } else if (tp->mcfg == CFG_METHOD_27) {
-                rtl8168_ephy_write(ioaddr, 0x00, 0x10A3);
-                rtl8168_ephy_write(ioaddr, 0x19, 0xFC00);
-                rtl8168_ephy_write(ioaddr, 0x1E, 0x20EA);
-        } else if (tp->mcfg == CFG_METHOD_28) {
-                SetPCIePhyBit(tp, 0x00, BIT_7);
-                ClearAndSetPCIePhyBit(tp,
-                                      0x0D,
-                                      BIT_8,
-                                      BIT_9
-                                     );
-                ClearPCIePhyBit(tp, 0x19, (BIT_15 | BIT_5 | BIT_0));
-                SetPCIePhyBit(tp, 0x1E, BIT_13);
-
-        } else if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30) {
-                ClearPCIePhyBit(tp, 0x1E, BIT_11);
-
-                SetPCIePhyBit(tp, 0x1E, BIT_0);
-                SetPCIePhyBit(tp, 0x1D, BIT_11);
-
-                rtl8168_ephy_write(ioaddr, 0x05, 0x2089);
-                rtl8168_ephy_write(ioaddr, 0x06, 0x5881);
-
-                rtl8168_ephy_write(ioaddr, 0x04, 0x154A);
-                rtl8168_ephy_write(ioaddr, 0x01, 0x068B);
+    struct rtl8168_private *tp = netdev_priv(dev);
+    void __iomem *ioaddr = tp->mmio_addr;
+    u16 ephy_data;
+    
+    
+    if (tp->mcfg == CFG_METHOD_4) {
+        /*Set EPHY registers    begin*/
+        /*Set EPHY register offset 0x02 bit 11 to 0 and bit 12 to 1*/
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x02);
+        ephy_data &= ~BIT_11;
+        ephy_data |= BIT_12;
+        rtl8168_ephy_write(ioaddr, 0x02, ephy_data);
+        
+        /*Set EPHY register offset 0x03 bit 1 to 1*/
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x03);
+        ephy_data |= (1 << 1);
+        rtl8168_ephy_write(ioaddr, 0x03, ephy_data);
+        
+        /*Set EPHY register offset 0x06 bit 7 to 0*/
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x06);
+        ephy_data &= ~(1 << 7);
+        rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
+        /*Set EPHY registers    end*/
+    } else if (tp->mcfg == CFG_METHOD_5) {
+        /* set EPHY registers */
+        SetPCIePhyBit(tp, 0x01, BIT_0);
+        
+        ClearAndSetPCIePhyBit(tp,
+                              0x03,
+                              BIT_10,
+                              BIT_5
+                              );
+    } else if (tp->mcfg == CFG_METHOD_9) {
+        /* set EPHY registers */
+        rtl8168_ephy_write(ioaddr, 0x01, 0x7C7F);
+        rtl8168_ephy_write(ioaddr, 0x02, 0x011F);
+        if(tp->eeprom_type != EEPROM_TYPE_NONE) {
+            ClearAndSetPCIePhyBit(tp,
+                                  0x03,
+                                  0xFFB0,
+                                  0x05B0
+                                  );
+        } else {
+            ClearAndSetPCIePhyBit(tp,
+                                  0x03,
+                                  0xFFF0,
+                                  0x05F0
+                                  );
         }
+        rtl8168_ephy_write(ioaddr, 0x06, 0xB271);
+        rtl8168_ephy_write(ioaddr, 0x07, 0xCE00);
+    } else if (tp->mcfg == CFG_METHOD_10) {
+        /* set EPHY registers */
+        rtl8168_ephy_write(ioaddr, 0x01, 0x6C7F);
+        rtl8168_ephy_write(ioaddr, 0x02, 0x011F);
+        ClearAndSetPCIePhyBit(tp,
+                              0x03,
+                              0xFFF0,
+                              0x01B0
+                              );
+        rtl8168_ephy_write(ioaddr, 0x1A, 0x0546);
+        rtl8168_ephy_write(ioaddr, 0x1C, 0x80C4);
+        rtl8168_ephy_write(ioaddr, 0x1D, 0x78E5);
+        rtl8168_ephy_write(ioaddr, 0x0A, 0x8100);
+    } else if (tp->mcfg == CFG_METHOD_12) {
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x0B);
+        rtl8168_ephy_write(ioaddr, 0x0B, ephy_data|0x48);
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
+        ephy_data &= ~0x20;
+        rtl8168_ephy_write(ioaddr, 0x19, ephy_data|0x50);
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
+        ephy_data &= ~0x100;
+        rtl8168_ephy_write(ioaddr, 0x0C, ephy_data|0x20);
+    } else if (tp->mcfg == CFG_METHOD_14 || tp->mcfg == CFG_METHOD_15) {
+        /* set EPHY registers */
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x00) & ~0x0200;
+        ephy_data |= 0x0100;
+        rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
+        ephy_data |= 0x0004;
+        rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x06) & ~0x0002;
+        ephy_data |= 0x0001;
+        rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x06);
+        ephy_data |= 0x0030;
+        rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x07);
+        ephy_data |= 0x2000;
+        rtl8168_ephy_write(ioaddr, 0x07, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
+        ephy_data |= 0x0020;
+        rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x03) & ~0x5800;
+        ephy_data |= 0x2000;
+        rtl8168_ephy_write(ioaddr, 0x03, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x03);
+        ephy_data |= 0x0001;
+        rtl8168_ephy_write(ioaddr, 0x03, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x01) & ~0x0800;
+        ephy_data |= 0x1000;
+        rtl8168_ephy_write(ioaddr, 0x01, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x07);
+        ephy_data |= 0x4000;
+        rtl8168_ephy_write(ioaddr, 0x07, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x1E);
+        ephy_data |= 0x2000;
+        rtl8168_ephy_write(ioaddr, 0x1E, ephy_data);
+        
+        rtl8168_ephy_write(ioaddr, 0x19, 0xFE6C);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x0A);
+        ephy_data |= 0x0040;
+        rtl8168_ephy_write(ioaddr, 0x0A, ephy_data);
+    } else if (tp->mcfg == CFG_METHOD_16 || tp->mcfg == CFG_METHOD_17) {
+        if (tp->mcfg == CFG_METHOD_16) {
+            rtl8168_ephy_write(ioaddr, 0x06, 0xF020);
+            rtl8168_ephy_write(ioaddr, 0x07, 0x01FF);
+            rtl8168_ephy_write(ioaddr, 0x00, 0x5027);
+            rtl8168_ephy_write(ioaddr, 0x01, 0x0003);
+            rtl8168_ephy_write(ioaddr, 0x02, 0x2D16);
+            rtl8168_ephy_write(ioaddr, 0x03, 0x6D49);
+            rtl8168_ephy_write(ioaddr, 0x08, 0x0006);
+            rtl8168_ephy_write(ioaddr, 0x0A, 0x00C8);
+        }
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x09);
+        ephy_data |= BIT_7;
+        rtl8168_ephy_write(ioaddr, 0x09, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
+        ephy_data |= (BIT_2 | BIT_5 | BIT_9);
+        rtl8168_ephy_write(ioaddr, 0x19, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
+        ephy_data |= BIT_3;
+        rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
+        ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
+        ephy_data |= BIT_9;
+        rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
+    } else if (tp->mcfg == CFG_METHOD_18 || tp->mcfg == CFG_METHOD_19) {
+        if (tp->mcfg == CFG_METHOD_18) {
+            ephy_data = rtl8168_ephy_read(ioaddr, 0x06);
+            ephy_data |= BIT_5;
+            ephy_data &= ~(BIT_7 | BIT_6);
+            rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
+            
+            ephy_data = rtl8168_ephy_read(ioaddr, 0x08);
+            ephy_data |= BIT_1;
+            ephy_data &= ~BIT_0;
+            rtl8168_ephy_write(ioaddr, 0x08, ephy_data);
+        }
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x09);
+        ephy_data |= BIT_7;
+        rtl8168_ephy_write(ioaddr, 0x09, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
+        ephy_data |= (BIT_2 | BIT_5 | BIT_9);
+        rtl8168_ephy_write(ioaddr, 0x19, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
+        ephy_data |= BIT_3;
+        rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
+        ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
+        ephy_data |= BIT_9;
+        rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
+    } else if (tp->mcfg == CFG_METHOD_20) {
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x06);
+        ephy_data |= BIT_5;
+        ephy_data &= ~(BIT_7 | BIT_6);
+        rtl8168_ephy_write(ioaddr, 0x06, ephy_data);
+        
+        rtl8168_ephy_write(ioaddr, 0x0f, 0x5200);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
+        ephy_data |= (BIT_2 | BIT_5 | BIT_9);
+        rtl8168_ephy_write(ioaddr, 0x19, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
+        ephy_data |= BIT_3;
+        rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
+        ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
+        ephy_data |= BIT_9;
+        rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
+    } else if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22) {
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
+        ephy_data &= ~(BIT_3);
+        rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
+        ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
+        ephy_data |= (BIT_5 | BIT_11);
+        rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x1E);
+        ephy_data |= (BIT_0);
+        rtl8168_ephy_write(ioaddr, 0x1E, ephy_data);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x19);
+        ephy_data &= ~(BIT_15);
+        rtl8168_ephy_write(ioaddr, 0x19, ephy_data);
+    } else if (tp->mcfg == CFG_METHOD_25) {
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x00);
+        ephy_data &= ~BIT_3;
+        rtl8168_ephy_write(ioaddr, 0x00, ephy_data);
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
+        ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10| BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
+        ephy_data |= (BIT_5 | BIT_11);
+        rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
+        
+        rtl8168_ephy_write(ioaddr, 0x19, 0x7C00);
+        rtl8168_ephy_write(ioaddr, 0x1E, 0x20EB);
+        rtl8168_ephy_write(ioaddr, 0x0D, 0x1666);
+        rtl8168_ephy_write(ioaddr, 0x00, 0x10A3);
+        rtl8168_ephy_write(ioaddr, 0x06, 0xF050);
+    } else if (tp->mcfg == CFG_METHOD_26) {
+        ClearPCIePhyBit(tp, 0x00, BIT_3);
+        ClearAndSetPCIePhyBit( tp,
+                              0x0C,
+                              (BIT_13 | BIT_12 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_4),
+                              (BIT_5 | BIT_11)
+                              );
+        SetPCIePhyBit(tp, 0x1E, BIT_0);
+        ClearPCIePhyBit(tp, 0x19, BIT_15);
+        
+        ClearPCIePhyBit(tp, 0x19, (BIT_5 | BIT_0));
+        
+        SetPCIePhyBit(tp, 0x1E, BIT_13);
+        ClearPCIePhyBit(tp, 0x0D, BIT_8);
+        SetPCIePhyBit(tp, 0x0D, BIT_9);
+        SetPCIePhyBit(tp, 0x00, BIT_7);
+        
+        SetPCIePhyBit(tp, 0x06, BIT_4);
+    } else if (tp->mcfg == CFG_METHOD_23) {
+        rtl8168_ephy_write(ioaddr, 0x00, 0x10AB);
+        rtl8168_ephy_write(ioaddr, 0x06, 0xf030);
+        rtl8168_ephy_write(ioaddr, 0x08, 0x2006);
+        rtl8168_ephy_write(ioaddr, 0x0D, 0x1666);
+        
+        ephy_data = rtl8168_ephy_read(ioaddr, 0x0C);
+        ephy_data &= ~(BIT_13 | BIT_12 | BIT_11 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4);
+        rtl8168_ephy_write(ioaddr, 0x0C, ephy_data);
+    } else if (tp->mcfg == CFG_METHOD_27) {
+        rtl8168_ephy_write(ioaddr, 0x00, 0x10A3);
+        rtl8168_ephy_write(ioaddr, 0x19, 0xFC00);
+        rtl8168_ephy_write(ioaddr, 0x1E, 0x20EA);
+    } else if (tp->mcfg == CFG_METHOD_28) {
+        SetPCIePhyBit(tp, 0x00, BIT_7);
+        ClearAndSetPCIePhyBit(tp,
+                              0x0D,
+                              BIT_8,
+                              BIT_9
+                              );
+        ClearPCIePhyBit(tp, 0x19, (BIT_15 | BIT_5 | BIT_0));
+        SetPCIePhyBit(tp, 0x1E, BIT_13);
+        
+    } else if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30) {
+        ClearPCIePhyBit(tp, 0x1E, BIT_11);
+        
+        SetPCIePhyBit(tp, 0x1E, BIT_0);
+        SetPCIePhyBit(tp, 0x1D, BIT_11);
+        
+        rtl8168_ephy_write(ioaddr, 0x05, 0x2089);
+        rtl8168_ephy_write(ioaddr, 0x06, 0x5881);
+        
+        rtl8168_ephy_write(ioaddr, 0x04, 0x154A);
+        rtl8168_ephy_write(ioaddr, 0x01, 0x068B);
+    }
 }
 
 static int
@@ -22191,7 +22201,7 @@ rtl8168_init_board(struct pci_dev *pdev,
         tp->msg_enable = netif_msg_init(debug.msg_enable, R8168_MSG_DEFAULT);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,26)
-        if (!aspm)
+        if (!aspm || tp->mcfg == CFG_METHOD_9)
                 pci_disable_link_state(pdev, PCIE_LINK_STATE_L0S | PCIE_LINK_STATE_L1 |
                                        PCIE_LINK_STATE_CLKPM);
 #endif
@@ -22661,6 +22671,7 @@ rtl8168_init_one(struct pci_dev *pdev,
 #ifdef  CONFIG_R8168_NAPI
                 RTL_NAPI_DEL(tp);
 #endif
+                rtl8168_disable_msi(pdev, tp);
                 rtl8168_release_board(pdev, dev, ioaddr);
                 return rc;
         }
@@ -22912,6 +22923,23 @@ set_offset79(struct rtl8168_private *tp, u8 setting)
         pci_write_config_byte(pdev, 0x79, device_control);
 
 }
+
+#endif /* DISABLED_CODE */
+
+void
+set_offset711(struct rtl8168_private *tp, u8 setting)
+{
+    u32 csi_tmp;
+    u32 temp = (u32)setting;
+    temp &= 0x0f;
+    temp = temp << 12;
+    /*set PCI configuration space offset 0x711 to setting*/
+    
+    csi_tmp = rtl8168_csi_read(tp, 0x710) & 0xffff0fff;
+    rtl8168_csi_write(tp, 0x710, csi_tmp | temp);
+}
+
+#if DISABLED_CODE
 
 static void
 rtl8168_hw_set_rx_packet_filter(struct net_device *dev)
@@ -23523,6 +23551,8 @@ rtl8168_hw_config(struct net_device *dev)
                    tp->mcfg == CFG_METHOD_30) {
                 set_offset70F(tp, 0x17);
                 set_offset79(tp, 0x50);
+                if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22)
+                    set_offset711(tp, 0x04);
 
                 rtl8168_eri_write(ioaddr, 0xC8, 4, 0x00080002, ERIAR_ExGMAC);
                 rtl8168_eri_write(ioaddr, 0xCC, 1, 0x38, ERIAR_ExGMAC);
@@ -23830,6 +23860,13 @@ rtl8168_hw_config(struct net_device *dev)
         }
 
         rtl8168_hw_clear_timer_int(dev);
+
+        switch (tp->mcfg) {
+            case CFG_METHOD_29:
+            case CFG_METHOD_30:
+                mac_ocp_write(tp, 0xE098, 0x0AA2);
+                break;
+        }
 
         switch (tp->mcfg) {
         case CFG_METHOD_21:

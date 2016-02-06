@@ -43,10 +43,14 @@ enum
 	MEDIUM_INDEX_10HD,
 	MEDIUM_INDEX_10FD,
 	MEDIUM_INDEX_100HD,
-	MEDIUM_INDEX_100FD,
-	MEDIUM_INDEX_100FDFC,
-	MEDIUM_INDEX_1000FD,
-	MEDIUM_INDEX_1000FDFC,
+    MEDIUM_INDEX_100FD,
+    MEDIUM_INDEX_100FDFC,
+    MEDIUM_INDEX_1000FD,
+    MEDIUM_INDEX_1000FDFC,
+    MEDIUM_INDEX_100FDEEE,
+    MEDIUM_INDEX_100FDFCEEE,
+    MEDIUM_INDEX_1000FDEEE,
+    MEDIUM_INDEX_1000FDFCEEE,
 	MEDIUM_INDEX_COUNT
 };
 
@@ -56,6 +60,22 @@ enum {
     kSpeed1000MBit = 1000*MBit,
     kSpeed100MBit = 100*MBit,
     kSpeed10MBit = 10*MBit,
+};
+
+enum {
+    kFlowControlOff = 0,
+    kFlowControlOn = 0x01
+};
+
+enum {
+    kEEEMode100 = 0x0002,
+    kEEEMode1000 = 0x0004
+};
+
+enum {
+    kEEETypeNo = 0,
+    kEEETypeYes = 1,
+    kEEETypeCount
 };
 
 /* RTL8111's dma descriptor. */
@@ -158,6 +178,12 @@ enum
 #define kDriverVersionName "Driver_Version"
 #define kNameLenght 64
 
+#ifdef CONFIG_RXPOLL
+
+#define kEnableRxPollName "rxPolling"
+
+#endif /* CONFIG_RXPOLL */
+
 extern const struct RTLChipInfo rtl_chip_info[];
 
 class RTL8111 : public super
@@ -183,6 +209,12 @@ public:
 	
 #ifdef __PRIVATE_SPI__
     virtual IOReturn outputStart(IONetworkInterface *interface, IOOptionBits options );
+    
+#ifdef CONFIG_RXPOLL
+    virtual IOReturn setInputPacketPollingEnable(IONetworkInterface *interface, bool enabled);
+    virtual void pollInputPackets(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context );
+#endif /* CONFIG_RXPOLL */
+
 #else
     virtual UInt32 outputPacket(mbuf_t m, void *param);
 #endif /* __PRIVATE_SPI__ */
@@ -216,6 +248,7 @@ private:
     bool initPCIConfigSpace(IOPCIDevice *provider);
     static IOReturn setPowerStateWakeAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
     static IOReturn setPowerStateSleepAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
+    void getParams();
     bool setupMediumDict();
     bool initEventSources(IOService *provider);
     void interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
@@ -238,7 +271,7 @@ private:
     void startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts);
     void setOffset79(UInt8 setting);
     void restartRTL8111();
-    
+    void setPhyMedium();
     UInt8 csiFun0ReadByte(UInt32 addr);
     void csiFun0WriteByte(UInt32 addr, UInt8 value);
     void enablePCIOffset99();
@@ -310,7 +343,10 @@ private:
     UInt32 mtu;
     UInt32 speed;
     UInt32 duplex;
-    UInt32 autoneg;
+    UInt16 flowCtl;
+    UInt16 autoneg;
+    UInt16 eeeAdv;
+    UInt16 eeeCap;
     struct pci_dev pciDeviceData;
     struct rtl8168_private linuxData;
     struct IOEthernetAddress currMacAddr;
@@ -326,11 +362,16 @@ private:
 	bool multicastMode;
     bool linkUp;
     
-#ifndef __PRIVATE_SPI__
+#ifdef __PRIVATE_SPI__
+    
+#ifdef CONFIG_RXPOLL
+    bool rxPoll;
+#endif /* CONFIG_RXPOLL */
+    
+#else
     bool stalled;
 #endif /* __PRIVATE_SPI__ */
     
-    bool useMSI;
     bool needsUpdate;
     bool wolCapable;
     bool wolActive;

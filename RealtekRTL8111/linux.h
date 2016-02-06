@@ -289,4 +289,7 @@ struct pci_dev {
 };
 
 #define eee_enable tp->eeeEnable
+
+#define BMCR_SPEED10    0x0000
+
 #endif

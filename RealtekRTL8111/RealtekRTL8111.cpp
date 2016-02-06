@@ -63,16 +63,24 @@ bool RTL8111::init(OSDictionary *properties)
         multicastMode = false;
         linkUp = false;
         
-#ifndef __PRIVATE_SPI__
+#ifdef __PRIVATE_SPI__
+        
+#ifdef CONFIG_RXPOLL
+        rxPoll = false;
+#endif /* CONFIG_RXPOLL */
+
+#else
         stalled = false;
 #endif /* __PRIVATE_SPI__ */
         
-        useMSI = false;
         mtu = ETH_DATA_LEN;
         powerState = 0;
         speed = SPEED_1000;
         duplex = DUPLEX_FULL;
         autoneg = AUTONEG_ENABLE;
+        flowCtl = kFlowControlOff;
+        eeeAdv = 0;
+        eeeCap = 0;
         linuxData.aspm = 0;
         pciDeviceData.vendor = 0;
         pciDeviceData.device = 0;
@@ -136,13 +144,6 @@ static const char *offName = "disabled";
 
 bool RTL8111::start(IOService *provider)
 {
-    OSNumber *intrMit;
-    OSBoolean *enableEEE;
-    OSBoolean *tso4;
-    OSBoolean *tso6;
-    OSBoolean *csoV6;
-    OSBoolean *noASPM;
-    OSString *versionString;
     bool result;
     
     result = super::start(provider);
@@ -167,51 +168,11 @@ bool RTL8111::start(IOService *provider)
         IOLog("Ethernet [RealtekRTL8111]: Failed to open provider.\n");
         goto error1;
     }
+    getParams();
     
-    noASPM = OSDynamicCast(OSBoolean, getProperty(kDisableASPMName));
-    disableASPM = (noASPM) ? noASPM->getValue() : false;
-    
-    DebugLog("Ethernet [RealtekRTL8111]: PCIe ASPM support %s.\n", disableASPM ? offName : onName);
-
     if (!initPCIConfigSpace(pciDevice)) {
         goto error2;
     }
-    
-    enableEEE = OSDynamicCast(OSBoolean, getProperty(kEnableEeeName));
-    
-    if (enableEEE)
-        linuxData.eeeEnable = (enableEEE->getValue()) ? 1 : 0;
-    else
-        linuxData.eeeEnable = 0;
-    
-    IOLog("Ethernet [RealtekRTL8111]: EEE support %s.\n", linuxData.eeeEnable ? onName : offName);
-    
-    tso4 = OSDynamicCast(OSBoolean, getProperty(kEnableTSO4Name));
-    enableTSO4 = (tso4) ? tso4->getValue() : false;
-    
-    IOLog("Ethernet [RealtekRTL8111]: TCP/IPv4 segmentation offload %s.\n", enableTSO4 ? onName : offName);
-    
-    tso6 = OSDynamicCast(OSBoolean, getProperty(kEnableTSO6Name));
-    enableTSO6 = (tso6) ? tso6->getValue() : false;
-    
-    IOLog("Ethernet [RealtekRTL8111]: TCP/IPv6 segmentation offload %s.\n", enableTSO6 ? onName : offName);
-    
-    csoV6 = OSDynamicCast(OSBoolean, getProperty(kEnableCSO6Name));
-    enableCSO6 = (csoV6) ? csoV6->getValue() : false;
-    
-    IOLog("Ethernet [RealtekRTL8111]: TCP/IPv6 checksum offload %s.\n", enableCSO6 ? onName : offName);
-    
-    intrMit = OSDynamicCast(OSNumber, getProperty(kIntrMitigateName));
-    
-    if (intrMit)
-        intrMitigateValue = intrMit->unsigned16BitValue();
-    
-    versionString = OSDynamicCast(OSString, getProperty(kDriverVersionName));
-    
-    if (versionString)
-        IOLog("Ethernet [RealtekRTL8111]: Version %s using interrupt mitigate value 0x%x. Please don't support tonymacx86.com!\n", versionString->getCStringNoCopy(), intrMitigateValue);
-    else
-        IOLog("Ethernet [RealtekRTL8111]: Using interrupt mitigate value 0x%x. Please don't support tonymacx86.com!\n", intrMitigateValue);
 
     if (!initRTL8111()) {
         goto error2;
@@ -388,9 +349,8 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     setLinkStatus(kIONetworkLinkValid);
     enableRTL8111();
     
-    /* In case we are using an msi the interrupt hasn't been enabled by start(). */
-    if (useMSI)
-        interruptSource->enable();
+    /* We have to enable the interrupt because we are using a msi interrupt. */
+    interruptSource->enable();
 
     txDescDoneCount = txDescDoneLast = 0;
     deadlockWarn = 0;
@@ -438,9 +398,8 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
     needsUpdate = false;
     txDescDoneCount = txDescDoneLast = 0;
 
-    /* In case we are using msi disable the interrupt. */
-    if (useMSI)
-        interruptSource->disable();
+    /* Disable interrupt as we are using msi. */
+    interruptSource->disable();
 
     disableRTL8111();
     
@@ -761,6 +720,19 @@ bool RTL8111::configureInterface(IONetworkInterface *interface)
         result = false;
         goto done;
     }
+    
+#ifdef CONFIG_RXPOLL
+    if (rxPoll) {
+        error = interface->configureInputPacketPolling(kNumRxDesc, 0);
+        
+        if (error != kIOReturnSuccess) {
+            IOLog("Ethernet [RealtekRTL8111]: configureInputPacketPolling() failed\n.");
+            result = false;
+            goto done;
+        }
+    }
+#endif /* CONFIG_RXPOLL */
+
 #endif /* __PRIVATE_SPI__ */
 
     snprintf(modelName, kNameLenght, "Realtek %s PCI Express Gigabit Ethernet", rtl_chip_info[linuxData.chipset].name);
@@ -989,11 +961,15 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
     DebugLog("selectMedium() ===>\n");
     
     if (medium) {
+        flowCtl = kFlowControlOff;
+        eeeAdv = 0;
+        
         switch (medium->getIndex()) {
             case MEDIUM_INDEX_AUTO:
                 autoneg = AUTONEG_ENABLE;
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
+                eeeAdv = eeeCap;
                 break;
                 
             case MEDIUM_INDEX_10HD:
@@ -1003,7 +979,7 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 break;
                 
             case MEDIUM_INDEX_10FD:
-                autoneg = AUTONEG_DISABLE;
+                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_10;
                 duplex = DUPLEX_FULL;
                 break;
@@ -1015,7 +991,7 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 break;
                 
             case MEDIUM_INDEX_100FD:
-                autoneg = AUTONEG_DISABLE;
+                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_100;
                 duplex = DUPLEX_FULL;
                 break;
@@ -1024,10 +1000,11 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 autoneg = AUTONEG_ENABLE;
                 speed = SPEED_100;
                 duplex = DUPLEX_FULL;
+                flowCtl = kFlowControlOn;
                 break;
                 
             case MEDIUM_INDEX_1000FD:
-                autoneg = AUTONEG_DISABLE;
+                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
                 break;
@@ -1036,9 +1013,40 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 autoneg = AUTONEG_ENABLE;
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
+                flowCtl = kFlowControlOn;
+                break;
+                
+            case MEDIUM_INDEX_100FDEEE:
+                autoneg = AUTONEG_ENABLE;
+                speed = SPEED_100;
+                duplex = DUPLEX_FULL;
+                eeeAdv = eeeCap;
+                break;
+                
+            case MEDIUM_INDEX_100FDFCEEE:
+                autoneg = AUTONEG_ENABLE;
+                speed = SPEED_100;
+                duplex = DUPLEX_FULL;
+                flowCtl = kFlowControlOn;
+                eeeAdv = eeeCap;
+                break;
+                
+            case MEDIUM_INDEX_1000FDEEE:
+                autoneg = AUTONEG_ENABLE;
+                speed = SPEED_1000;
+                duplex = DUPLEX_FULL;
+                eeeAdv = eeeCap;
+                break;
+                
+            case MEDIUM_INDEX_1000FDFCEEE:
+                autoneg = AUTONEG_ENABLE;
+                speed = SPEED_1000;
+                duplex = DUPLEX_FULL;
+                flowCtl = kFlowControlOn;
+                eeeAdv = eeeCap;
                 break;
         }
-        rtl8168_set_speed(&linuxData, autoneg, speed, duplex);
+        setPhyMedium();
         setCurrentMedium(medium);
     }
     
@@ -1050,6 +1058,74 @@ done:
 
 #pragma mark --- data structure initialization methods ---
 
+void RTL8111::getParams()
+{
+    OSNumber *intrMit;
+    OSBoolean *enableEEE;
+
+#ifdef CONFIG_RXPOLL
+    OSBoolean *poll;
+#endif /* CONFIG_RXPOLL */
+
+    OSBoolean *tso4;
+    OSBoolean *tso6;
+    OSBoolean *csoV6;
+    OSBoolean *noASPM;
+    OSString *versionString;
+
+    noASPM = OSDynamicCast(OSBoolean, getProperty(kDisableASPMName));
+    disableASPM = (noASPM) ? noASPM->getValue() : false;
+    
+    DebugLog("Ethernet [RealtekRTL8111]: PCIe ASPM support %s.\n", disableASPM ? offName : onName);
+    
+    enableEEE = OSDynamicCast(OSBoolean, getProperty(kEnableEeeName));
+    
+    if (enableEEE)
+        linuxData.eeeEnable = (enableEEE->getValue()) ? 1 : 0;
+    else
+        linuxData.eeeEnable = 0;
+    
+    IOLog("Ethernet [RealtekRTL8111]: EEE support %s.\n", linuxData.eeeEnable ? onName : offName);
+    
+#ifdef __PRIVATE_SPI__
+    
+#ifdef CONFIG_RXPOLL
+    poll = OSDynamicCast(OSBoolean, getProperty(kEnableRxPollName));
+    rxPoll = (poll) ? poll->getValue() : false;
+    
+    IOLog("Ethernet [RealtekRTL8111]: RxPoll support %s.\n", enableTSO4 ? onName : offName);
+#endif /* CONFIG_RXPOLL */
+
+#endif /* __PRIVATE_SPI__ */
+
+    tso4 = OSDynamicCast(OSBoolean, getProperty(kEnableTSO4Name));
+    enableTSO4 = (tso4) ? tso4->getValue() : false;
+    
+    IOLog("Ethernet [RealtekRTL8111]: TCP/IPv4 segmentation offload %s.\n", enableTSO4 ? onName : offName);
+    
+    tso6 = OSDynamicCast(OSBoolean, getProperty(kEnableTSO6Name));
+    enableTSO6 = (tso6) ? tso6->getValue() : false;
+    
+    IOLog("Ethernet [RealtekRTL8111]: TCP/IPv6 segmentation offload %s.\n", enableTSO6 ? onName : offName);
+    
+    csoV6 = OSDynamicCast(OSBoolean, getProperty(kEnableCSO6Name));
+    enableCSO6 = (csoV6) ? csoV6->getValue() : false;
+    
+    IOLog("Ethernet [RealtekRTL8111]: TCP/IPv6 checksum offload %s.\n", enableCSO6 ? onName : offName);
+    
+    intrMit = OSDynamicCast(OSNumber, getProperty(kIntrMitigateName));
+    
+    if (intrMit)
+        intrMitigateValue = intrMit->unsigned16BitValue();
+    
+    versionString = OSDynamicCast(OSString, getProperty(kDriverVersionName));
+    
+    if (versionString)
+        IOLog("Ethernet [RealtekRTL8111]: Version %s using interrupt mitigate value 0x%x. Please don't support tonymacx86.com!\n", versionString->getCStringNoCopy(), intrMitigateValue);
+    else
+        IOLog("Ethernet [RealtekRTL8111]: Using interrupt mitigate value 0x%x. Please don't support tonymacx86.com!\n", intrMitigateValue);
+}
+
 static IOMediumType mediumTypeArray[MEDIUM_INDEX_COUNT] = {
     kIOMediumEthernetAuto,
     (kIOMediumEthernet10BaseT | kIOMediumOptionHalfDuplex),
@@ -1058,7 +1134,11 @@ static IOMediumType mediumTypeArray[MEDIUM_INDEX_COUNT] = {
     (kIOMediumEthernet100BaseTX | kIOMediumOptionFullDuplex),
     (kIOMediumEthernet100BaseTX | kIOMediumOptionFullDuplex | kIOMediumOptionFlowControl),
     (kIOMediumEthernet1000BaseT | kIOMediumOptionFullDuplex),
-    (kIOMediumEthernet1000BaseT | kIOMediumOptionFullDuplex | kIOMediumOptionFlowControl)
+    (kIOMediumEthernet1000BaseT | kIOMediumOptionFullDuplex | kIOMediumOptionFlowControl),
+    (kIOMediumEthernet100BaseTX | kIOMediumOptionFullDuplex | kIOMediumOptionEEE),
+    (kIOMediumEthernet100BaseTX | kIOMediumOptionFullDuplex | kIOMediumOptionFlowControl | kIOMediumOptionEEE),
+    (kIOMediumEthernet1000BaseT | kIOMediumOptionFullDuplex | kIOMediumOptionEEE),
+    (kIOMediumEthernet1000BaseT | kIOMediumOptionFullDuplex | kIOMediumOptionFlowControl | kIOMediumOptionEEE)
 };
 
 static UInt32 mediumSpeedArray[MEDIUM_INDEX_COUNT] = {
@@ -1069,19 +1149,24 @@ static UInt32 mediumSpeedArray[MEDIUM_INDEX_COUNT] = {
     100 * MBit,
     100 * MBit,
     1000 * MBit,
+    1000 * MBit,
+    100 * MBit,
+    100 * MBit,
+    1000 * MBit,
     1000 * MBit
 };
 
 bool RTL8111::setupMediumDict()
 {
 	IONetworkMedium *medium;
-    UInt32 i;
+    UInt32 i, n;
     bool result = false;
 
-    mediumDict = OSDictionary::withCapacity(MEDIUM_INDEX_COUNT + 1);
+    n = eeeCap ? MEDIUM_INDEX_COUNT : MEDIUM_INDEX_COUNT - 4;
+    mediumDict = OSDictionary::withCapacity(n + 1);
 
     if (mediumDict) {
-        for (i = MEDIUM_INDEX_AUTO; i < MEDIUM_INDEX_COUNT; i++) {
+        for (i = MEDIUM_INDEX_AUTO; i < n; i++) {
             medium = IONetworkMedium::medium(mediumTypeArray[i], mediumSpeedArray[i], 0, i);
             
             if (!medium)
@@ -1143,29 +1228,11 @@ bool RTL8111::initEventSources(IOService *provider)
         interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurred), provider, msiIndex);
     }
     if (!interruptSource) {
-        DebugLog("Ethernet [RealtekRTL8111]: Warning: MSI index was not found or MSI interrupt could not be enabled.\n");
-        
-        interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurred), provider);
-
-        useMSI = false;
-    } else {
-        useMSI = true;
-    }
-    if (!interruptSource)
+        IOLog("Ethernet [RealtekRTL8111]: Error: MSI index was not found or MSI interrupt could not be enabled.\n");
         goto error1;
-    
+    }
     workLoop->addEventSource(interruptSource);
     
-    /*
-     * This is important. If the interrupt line is shared with other devices,
-	 * then the interrupt vector will be enabled only if all corresponding
-	 * interrupt event sources are enabled. To avoid masking interrupts for
-	 * other devices that are sharing the interrupt line, the event source
-	 * is enabled immediately.
-     */
-    if (!useMSI)
-        interruptSource->enable();
-
     if (revisionC)
         timerSource = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &RTL8111::timerActionRTL8111C));
     else
@@ -1558,8 +1625,6 @@ void RTL8111::rxInterrupt()
     }
     if (goodPkts)
         netif->flushInputQueue();
-    
-    //etherStats->dot3RxExtraEntry.interrupts++;
 }
 
 void RTL8111::checkLinkStatus()
@@ -1717,6 +1782,118 @@ bool RTL8111::checkForDeadlock()
     return deadlock;
 }
 
+#pragma mark --- rx poll methods ---
+
+#ifdef CONFIG_RXPOLL
+
+IOReturn RTL8111::setInputPacketPollingEnable(IONetworkInterface *interface, bool enabled)
+{
+    DebugLog("setInputPacketPollingEnable() ===>\n");
+ /*
+    if (enabled) {
+        intrMask = intrPollMask;
+        polling = true;
+    } else {
+        intrMask = intrRxMask;
+        polling = false;
+    }
+    if(isEnabled)
+        WriteReg16(IntrMask, intrMask);
+    
+    DebugLog("input polling %s.\n", enabled ? "enabled" : "disabled");
+*/
+    DebugLog("setInputPacketPollingEnable() <===\n");
+    
+    return kIOReturnSuccess;
+}
+
+void RTL8111::pollInputPackets(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context )
+{
+    IOPhysicalSegment rxSegment;
+    RtlDmaDesc *desc = &rxDescArray[rxNextDescIndex];
+    mbuf_t bufPkt, newPkt;
+    UInt64 addr;
+    UInt32 opts1, opts2;
+    UInt32 descStatus1, descStatus2;
+    UInt32 pktSize;
+    UInt16 vlanTag;
+    UInt16 goodPkts = 0;
+    bool replaced;
+    
+    //DebugLog("pollInputPackets() ===>\n");
+    
+    while (!((descStatus1 = OSSwapLittleToHostInt32(desc->opts1)) & DescOwn) && (goodPkts < maxCount)) {
+        opts1 = (rxNextDescIndex == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
+        opts2 = 0;
+        addr = 0;
+        
+        /* As we don't support jumbo frames we consider fragmented packets as errors. */
+        if ((descStatus1 & (FirstFrag|LastFrag)) != (FirstFrag|LastFrag)) {
+            DebugLog("Ethernet [RealtekRTL8111]: Fragmented packet.\n");
+            etherStats->dot3StatsEntry.frameTooLongs++;
+            opts1 |= kRxBufferPktSize;
+            goto nextDesc;
+        }
+        
+        descStatus2 = OSSwapLittleToHostInt32(desc->opts2);
+        pktSize = (descStatus1 & 0x1fff) - kIOEthernetCRCSize;
+        bufPkt = rxMbufArray[rxNextDescIndex];
+        vlanTag = (descStatus2 & RxVlanTag) ? OSSwapInt16(descStatus2 & 0xffff) : 0;
+        //DebugLog("rxInterrupt(): descStatus1=0x%x, descStatus2=0x%x, pktSize=%u\n", descStatus1, descStatus2, pktSize);
+        
+        newPkt = replaceOrCopyPacket(&bufPkt, pktSize, &replaced);
+        
+        if (!newPkt) {
+            /* Allocation of a new packet failed so that we must leave the original packet in place. */
+            DebugLog("Ethernet [RealtekRTL8111]: replaceOrCopyPacket() failed.\n");
+            etherStats->dot3RxExtraEntry.resourceErrors++;
+            opts1 |= kRxBufferPktSize;
+            goto nextDesc;
+        }
+        
+        /* If the packet was replaced we have to update the descriptor's buffer address. */
+        if (replaced) {
+            if (rxMbufCursor->getPhysicalSegmentsWithCoalesce(bufPkt, &rxSegment, 1) != 1) {
+                DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed.\n");
+                etherStats->dot3RxExtraEntry.resourceErrors++;
+                freePacket(bufPkt);
+                opts1 |= kRxBufferPktSize;
+                goto nextDesc;
+            }
+            opts1 |= ((UInt32)rxSegment.length & 0x0000ffff);
+            addr = rxSegment.location;
+            rxMbufArray[rxNextDescIndex] = bufPkt;
+        } else {
+            opts1 |= kRxBufferPktSize;
+        }
+        getChecksumResult(newPkt, descStatus1, descStatus2);
+        
+        /* Also get the VLAN tag if there is any. */
+        if (vlanTag)
+            setVlanTag(newPkt, vlanTag);
+        
+        mbuf_pkthdr_setlen(newPkt, pktSize);
+        mbuf_setlen(newPkt, pktSize);
+        netif->enqueueInputPacket(newPkt, pollQueue);
+        goodPkts++;
+        
+        /* Finally update the descriptor and get the next one to examine. */
+    nextDesc:
+        if (addr)
+            desc->addr = OSSwapHostToLittleInt64(addr);
+        
+        desc->opts2 = OSSwapHostToLittleInt32(opts2);
+        desc->opts1 = OSSwapHostToLittleInt32(opts1);
+        
+        ++rxNextDescIndex &= kRxDescMask;
+        desc = &rxDescArray[rxNextDescIndex];
+    }
+    
+    //DebugLog("pollInputPackets() <===\n");
+}
+
+#endif /* CONFIG_RXPOLL */
+
 #pragma mark --- hardware specific methods ---
 
 void RTL8111::getTso4Command(UInt32 *cmd1, UInt32 *cmd2, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags)
@@ -1861,6 +2038,11 @@ static const char *duplexHalfName = "Half-duplex";
 static const char *offFlowName = "No flow-control";
 static const char *onFlowName = "flow-control";
 
+static const char* eeeNames[kEEETypeCount] = {
+    "",
+    ", EEE"
+};
+
 void RTL8111::setLinkUp(UInt8 linkState)
 {
     UInt64 mediumSpeed;
@@ -1868,32 +2050,73 @@ void RTL8111::setLinkUp(UInt8 linkState)
     const char *speedName;
     const char *duplexName;
     const char *flowName;
+    const char *eeeName;
     UInt16 newIntrMitigate = 0x5f51;
-    bool fc;
+    UInt16 eee = 0;
     
+    eeeName = eeeNames[kEEETypeNo];
+
+    /* Get EEE mode. */
+    if (eeeCap) {
+        mdio_write(&linuxData, 0x0D, 0x0007);
+        mdio_write(&linuxData, 0x0E, 0x003D);
+        mdio_write(&linuxData, 0x0D, 0x4007);
+        eee = (mdio_read(&linuxData, 0x0E) & eeeAdv);
+        //DebugLog("Ethernet [RealtekRTL8111]: LPA=%u\n", eee);
+    }
     /* Get link speed, duplex and flow-control mode. */
     if (linkState &	(TxFlowCtrl | RxFlowCtrl)) {
         flowName = onFlowName;
-        fc = true;
+        flowCtl = kFlowControlOn;
     } else {
         flowName = offFlowName;
-        fc = false;
+        flowCtl = kFlowControlOff;
     }
     if (linkState & _1000bpsF) {
-        mediumIndex = fc ? MEDIUM_INDEX_1000FDFC : MEDIUM_INDEX_1000FD;
         mediumSpeed = kSpeed1000MBit;
         speed = SPEED_1000;
         speedName = speed1GName;
         duplexName = duplexFullName;
         newIntrMitigate = intrMitigateValue;
+
+        if (flowCtl == kFlowControlOn) {
+            if (eee & kEEEMode1000) {
+                mediumIndex = MEDIUM_INDEX_1000FDFCEEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MEDIUM_INDEX_1000FDFC;
+            }
+        } else {
+            if (eee & kEEEMode1000) {
+                mediumIndex = MEDIUM_INDEX_1000FDEEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MEDIUM_INDEX_1000FD;
+            }
+        }
     } else if (linkState & _100bps) {
         mediumSpeed = kSpeed100MBit;
         speed = SPEED_100;
         speedName = speed100MName;
         
         if (linkState & FullDup) {
-            mediumIndex = fc ? MEDIUM_INDEX_100FDFC : MEDIUM_INDEX_100FD;
             duplexName = duplexFullName;
+            
+            if (flowCtl == kFlowControlOn) {
+                if (eee & kEEEMode100) {
+                    mediumIndex =  MEDIUM_INDEX_100FDFCEEE;
+                    eeeName = eeeNames[kEEETypeYes];
+                } else {
+                    mediumIndex = MEDIUM_INDEX_100FDFC;
+                }
+            } else {
+                if (eee & kEEEMode100) {
+                    mediumIndex =  MEDIUM_INDEX_100FDEEE;
+                    eeeName = eeeNames[kEEETypeYes];
+                } else {
+                    mediumIndex = MEDIUM_INDEX_100FD;
+                }
+            }
         } else {
             mediumIndex = MEDIUM_INDEX_100HD;
             duplexName = duplexHalfName;
@@ -1929,7 +2152,7 @@ void RTL8111::setLinkUp(UInt8 linkState)
     }
 #endif /* __PRIVATE_SPI__ */
 
-    IOLog("Ethernet [RealtekRTL8111]: Link up on en%u, %s, %s, %s\n", netif->getUnitNumber(), speedName, duplexName, flowName);
+    IOLog("Ethernet [RealtekRTL8111]: Link up on en%u, %s, %s, %s%s\n", netif->getUnitNumber(), speedName, duplexName, flowName, eeeName);
 }
 
 void RTL8111::setLinkDown()
@@ -1959,8 +2182,8 @@ void RTL8111::setLinkDown()
     /* Cleanup descriptor ring. */
     txClearDescriptors();
     
-    rtl8168_set_speed(tp, autoneg, speed, duplex);
-
+    setPhyMedium();
+    
     switch (tp->mcfg) {
         case CFG_METHOD_21:
         case CFG_METHOD_22:
@@ -2134,10 +2357,14 @@ bool RTL8111::initRTL8111()
     }
     tp->chipset =  tp->mcfg;
     
+    /* Setup EEE support. */
+    if ((tp->mcfg >= CFG_METHOD_14) && (linuxData.eeeEnable != 0)) {
+        eeeAdv = eeeCap = (kEEEMode100 | kEEEMode1000);
+    }
     /* Select the chip revision. */
     revisionC = ((tp->chipset == CFG_METHOD_1) || (tp->chipset == CFG_METHOD_2) || (tp->chipset == CFG_METHOD_3)) ? false : true;
     
-	tp->set_speed = rtl8168_set_speed_xmii;
+	//tp->set_speed = rtl8168_set_speed_xmii;
 	tp->get_settings = rtl8168_gset_xmii;
 	tp->phy_reset_enable = rtl8168_xmii_reset_enable;
 	tp->phy_reset_pending = rtl8168_xmii_reset_pending;
@@ -2431,7 +2658,8 @@ void RTL8111::enableRTL8111()
     rtl8168_hw_phy_config(tp);
 	startRTL8111(intrMitigateValue, true);
 	rtl8168_dsm(tp, DSM_IF_UP);
-	rtl8168_set_speed(tp, autoneg, speed, duplex);
+    
+    setPhyMedium();
 }
 
 void RTL8111::disableRTL8111()
@@ -2859,7 +3087,9 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         
         set_offset70F(tp, 0x17);
         setOffset79(0x50);
-        
+        if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22)
+            set_offset711(tp, 0x04);
+
         rtl8168_eri_write(baseAddr, 0xC8, 4, 0x00080002, ERIAR_ExGMAC);
         rtl8168_eri_write(baseAddr, 0xCC, 1, 0x38, ERIAR_ExGMAC);
         rtl8168_eri_write(baseAddr, 0xD0, 1, 0x48, ERIAR_ExGMAC);
@@ -3122,6 +3352,12 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         }
     }
     switch (tp->mcfg) {
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            mac_ocp_write(tp, 0xE098, 0x0AA2);
+            break;
+    }
+    switch (tp->mcfg) {
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_23:
@@ -3226,10 +3462,97 @@ void RTL8111::startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
 	udelay(10);
 }
 
+void RTL8111::setPhyMedium()
+{
+    struct rtl8168_private *tp = &linuxData;
+    int autoNego = 0;
+    int gigaCtrl = 0;
+    int force = 0;
+    
+    if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30) {
+        /* Disable Giga Lite. */
+        mdio_write(tp, 0x1F, 0x0A42);
+        ClearEthPhyBit(tp, 0x14, BIT_9);
+        mdio_write(tp, 0x1F, 0x0A40);
+        mdio_write(tp, 0x1F, 0x0000);
+    }
+    if ((speed != SPEED_1000) && (speed != SPEED_100) && (speed != SPEED_10)) {
+        speed = SPEED_1000;
+        duplex = DUPLEX_FULL;
+        autoneg = AUTONEG_ENABLE;
+    }
+    autoNego = mdio_read(tp, MII_ADVERTISE);
+    autoNego &= ~(ADVERTISE_10HALF | ADVERTISE_10FULL | ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM);
+    
+    gigaCtrl = mdio_read(tp, MII_CTRL1000);
+    gigaCtrl &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
+    
+    if ((autoneg == AUTONEG_ENABLE) || (speed == SPEED_1000)) {
+        /* n-way force */
+        if ((speed == SPEED_10) && (duplex == DUPLEX_HALF)) {
+            autoNego |= ADVERTISE_10HALF;
+        } else if ((speed == SPEED_10) && (duplex == DUPLEX_FULL)) {
+            autoNego |= ADVERTISE_10HALF |
+            ADVERTISE_10FULL;
+        } else if ((speed == SPEED_100) && (duplex == DUPLEX_HALF)) {
+            autoNego |= ADVERTISE_100HALF |
+            ADVERTISE_10HALF |
+            ADVERTISE_10FULL;
+        } else if ((speed == SPEED_100) && (duplex == DUPLEX_FULL)) {
+            autoNego |= ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_10HALF | ADVERTISE_10FULL;
+        } else if (speed == SPEED_1000) {
+            gigaCtrl |= ADVERTISE_1000HALF | ADVERTISE_1000FULL;
+            
+            autoNego |= ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_10HALF | ADVERTISE_10FULL;
+        }
+        autoneg = AUTONEG_ENABLE;
+        
+        /* Set flow control support. */
+        if (flowCtl)
+            autoNego |= ADVERTISE_PAUSE_CAP|ADVERTISE_PAUSE_ASYM;
+        
+        tp->phy_auto_nego_reg = autoNego;
+        tp->phy_1000_ctrl_reg = gigaCtrl;
+        
+        /* Setup EEE advertisemnet. */
+        if (eeeCap) {
+            mdio_write(&linuxData, 0x0D, 0x0007);
+            mdio_write(&linuxData, 0x0E, 0x003C);
+            mdio_write(&linuxData, 0x0D, 0x4007);
+            mdio_write(&linuxData, 0x0E, eeeAdv);
+        }
+        mdio_write(tp, 0x1f, 0x0000);
+        mdio_write(tp, MII_ADVERTISE, autoNego);
+        mdio_write(tp, MII_CTRL1000, gigaCtrl);
+        mdio_write(tp, MII_BMCR, BMCR_RESET | BMCR_ANENABLE | BMCR_ANRESTART);
+        mdelay(20);
+    } else {
+        /* true force */
+        if ((speed == SPEED_10) && (duplex == DUPLEX_HALF)) {
+            force = BMCR_SPEED10;
+        } else if ((speed == SPEED_10) && (duplex == DUPLEX_FULL)) {
+            force = BMCR_SPEED10 | BMCR_FULLDPLX;
+        } else if ((speed == SPEED_100) && (duplex == DUPLEX_HALF)) {
+            force = BMCR_SPEED100;
+        } else if ((speed == SPEED_100) && (duplex == DUPLEX_FULL)) {
+            force = BMCR_SPEED100 | BMCR_FULLDPLX;
+        }
+        
+        mdio_write(tp, 0x1f, 0x0000);
+        mdio_write(tp, MII_BMCR, force);
+    }
+    tp->autoneg = autoneg;
+    tp->speed = speed;
+    tp->duplex = duplex;
+    
+    if (tp->mcfg == CFG_METHOD_11)
+        rtl8168dp_10mbps_gphy_para(&linuxData);
+}
+
 /* Set PCI configuration space offset 0x79 to setting. */
 
 void RTL8111::setOffset79(UInt8 setting)
-{    
+{
     UInt8 deviceControl;
     
     DebugLog("setOffset79() ===>\n");
@@ -3352,9 +3675,11 @@ void RTL8111::initPCIOffset99()
     
     switch (tp->mcfg) {
         case CFG_METHOD_26:
-            csi_tmp = rtl8168_eri_read(baseAddr, 0x5C2, 1, ERIAR_ExGMAC);
-            csi_tmp &= ~BIT_1;
-            rtl8168_eri_write(baseAddr, 0x5C2, 1, csi_tmp, ERIAR_ExGMAC);
+            if (tp->org_pci_offset_99 & BIT_2) {
+                csi_tmp = rtl8168_eri_read(baseAddr, 0x5C2, 1, ERIAR_ExGMAC);
+                csi_tmp &= ~BIT_1;
+                rtl8168_eri_write(baseAddr, 0x5C2, 1, csi_tmp, ERIAR_ExGMAC);
+            }
             break;
     }
     
@@ -3383,9 +3708,19 @@ void RTL8111::initPCIOffset99()
     
     switch (tp->mcfg) {
         case CFG_METHOD_26:
-            csi_tmp = rtl8168_eri_read(baseAddr, 0x5C8, 1, ERIAR_ExGMAC);
-            csi_tmp |= BIT_0;
-            rtl8168_eri_write(baseAddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
+            rtl8168_eri_write(baseAddr, 0x5C0, 1, 0xFA, ERIAR_ExGMAC);
+            break;
+    }
+    
+    switch (tp->mcfg) {
+        case CFG_METHOD_26:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            if (tp->org_pci_offset_99 & BIT_2) {
+                csi_tmp = rtl8168_eri_read(baseAddr, 0x5C8, 1, ERIAR_ExGMAC);
+                csi_tmp |= BIT_0;
+                rtl8168_eri_write(baseAddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
+            }
             break;
     }
     
@@ -3398,7 +3733,6 @@ void RTL8111::initPCIOffset99()
             rtl8168_eri_write(baseAddr, 0x2E4, 2, 0x8C12, ERIAR_ExGMAC);
             rtl8168_eri_write(baseAddr, 0x2E6, 2, 0x9003, ERIAR_ExGMAC);
             break;
-            
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_24:
@@ -3418,18 +3752,6 @@ void RTL8111::initPCIOffset99()
     }
     
     switch (tp->mcfg) {
-        case CFG_METHOD_26:
-        case CFG_METHOD_29:
-        case CFG_METHOD_30:
-            WriteReg8(0xB6, ReadReg8(0xB6) | BIT_0);
-            
-            csi_tmp = rtl8168_eri_read(baseAddr, 0x5C8, 1, ERIAR_ExGMAC);
-            csi_tmp |= BIT_0;
-            rtl8168_eri_write(baseAddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
-            break;
-    }
-    
-    switch (tp->mcfg) {
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_24:
@@ -3443,6 +3765,16 @@ void RTL8111::initPCIOffset99()
             break;
     }
     
+    switch (tp->mcfg) {
+        case CFG_METHOD_26:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+            if (tp->org_pci_offset_99 & BIT_2)
+                WriteReg8(0xB6, ReadReg8(0xB6) | BIT_0);
+            break;
+    }
+    
+    enablePCIOffset99();
 }
 
 void RTL8111::setPCI99_180ExitDriverPara()

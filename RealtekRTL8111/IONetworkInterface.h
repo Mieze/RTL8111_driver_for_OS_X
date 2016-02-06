@@ -143,6 +143,17 @@
 
 #define kIOLocation               "IOLocation"
 
+/*! @defined kIONetworkNoBSDAttachKey
+    @abstract kIONetworkNoBSDAttachKey is a property of IONetworkInterface
+        objects. It has an OSBoolean value.
+    @discussion Adding a property with this key and the value kOSBooleanTrue
+        before the interface is published will hold off the BSD attach.
+        When the interface is ready to attach to BSD, remove the property
+        and then re-publish the interface by calling registerService().
+*/
+
+#define kIONetworkNoBSDAttachKey  "IONetworkNoBSDAttach"
+
 /*! @enum InterfaceObjectStates
     @discussion Constants used to encode the state of the interface object.
    @constant kIONetworkInterfaceRegisteredState The interface object has
@@ -241,6 +252,44 @@ enum IOMbufServiceClass {
     kIOMbufServiceClassVO       = 800,
     kIOMbufServiceClassCTL      = 900
 };
+
+/*! @enum IONetworkTransmitStatus
+    @discussion Constants for packet transmit status.
+    @constant kIONetworkTransmitStatusSuccess Packet sent across link.
+    @constant kIONetworkTransmitStatusFailed  Failed to send packet across link.
+    @constant kIONetworkTransmitStatusAborted Send aborted, peer was asleep.
+    @constant kIONetworkTransmitStatusQueueFull Driver send queue was full.
+*/
+enum {
+    kIONetworkTransmitStatusSuccess     = 0,
+    kIONetworkTransmitStatusFailed      = 1,
+    kIONetworkTransmitStatusAborted     = 2,
+    kIONetworkTransmitStatusQueueFull   = 3
+};
+
+typedef uint32_t IONetworkTransmitStatus;
+
+/*! @typedef IONetworkPacketPollingParameters
+    @discussion Mirrors the definition of <code>ifnet_poll_params()</code>.
+    @field maxPacketCount The maximum number of packets to be dequeued each
+    time the driver's <code>pollInputPackets</code> is invoked. A zero value
+    indicates the use of default maximum defined by the system.
+    @field lowThresholdPackets Low watermark packets threshold.
+    @field highThresholdPackets High watermark packets threshold.
+    @field lowThresholdBytes Low watermark bytes threshold.
+    @field highThresholdBytes High watermark bytes threshold.
+    @field pollIntervalTime The interval time between each invocation of
+    the driver's <code>pollInputPackets</code> in nanoseconds.
+*/
+struct IONetworkPacketPollingParameters {
+    uint32_t    maxPacketCount;
+    uint32_t    lowThresholdPackets;
+    uint32_t    highThresholdPackets;
+    uint32_t    lowThresholdBytes;
+    uint32_t    highThresholdBytes;
+    uint64_t    pollIntervalTime;
+    uint64_t    reserved[4];
+};
 #endif /* __PRIVATE_SPI__ */
 
 /*! @class IONetworkInterface
@@ -285,6 +334,8 @@ public:
 */
     typedef errno_t (*OutputPreEnqueueHandler)(
         void * target, void * refCon, mbuf_t packet );
+
+    static IOReturn errnoToIOReturn( errno_t error );
 #endif /* __PRIVATE_SPI__ */
 
 private:
@@ -311,6 +362,7 @@ private:
         int                         eflags;
         int                         addrlen;
         int                         hdrlen;
+        int32_t                     loggingLevel;
         uint32_t                    outputQueueModel;
         IONetworkStats              driverStats;
         IONetworkStats              lastDriverStats;
@@ -342,6 +394,7 @@ private:
         OutputPreEnqueueHandler     peqHandler;
         void *                      peqTarget;
         void *                      peqRefcon;
+        uint32_t                    subType;
 #endif
     };
 
@@ -372,16 +425,19 @@ private:
     static void     if_input_poll(ifnet_t ifp, uint32_t flags,
                                 uint32_t max_count,
                                 mbuf_t * first_packet, mbuf_t * last_packet,
-                                uint32_t *  cnt, uint32_t * len );
+                                uint32_t *  cnt, uint32_t * len);
     static void     if_input_poll_gated(ifnet_t ifp, uint32_t flags,
                                 uint32_t max_count,
                                 mbuf_t * first_packet, mbuf_t * last_packet,
-                                uint32_t *  cnt, uint32_t * len );
+                                uint32_t *  cnt, uint32_t * len);
 #ifdef __PRIVATE_SPI__
     static errno_t  if_input_ctl(ifnet_t ifp, ifnet_ctl_cmd_t cmd,
-                                uint32_t arglen, void * arg );
+                                 uint32_t arglen, void * arg);
     static errno_t  if_output_pre_enqueue(ifnet_t ifp, mbuf_t packet);
+    static errno_t  if_output_ctl(ifnet_t ifp, ifnet_ctl_cmd_t cmd,
+                                  u_int32_t arglen, void *arg);
 #endif
+    void            notifyDriver( uint32_t type, void * data );
 
 public:
 
@@ -1031,6 +1087,35 @@ protected:
 
 public:
 #ifdef __PRIVATE_SPI__
+/*! @function setInterfaceSubType
+    @abstract Sets the interface sub-type.
+    @discussion The sub-type must be set before the interface is attached to
+    the networking stack. The driver's <code>configureInterface()</code>
+    or <code>attachToDataLinkLayer</code> in a subclass are valid call sites.
+    @param subType A constant defined in <code>IONetworkTypesPrivate.h</code>.
+    @result Returns <code>true</code> on success, <code>false</code> otherwise.
+*/
+    bool    setInterfaceSubType( uint32_t subType );
+
+/*! @function isBPFTapEnabled
+    @abstract Query if the BPF tap is enabled.
+    @abstract Allows a driver to poll the BPF tap state after receiving a
+    <code>kIONetworkNotificationBPFTapStateChange</code> notification.
+    @param options No options are currently defined, always pass zero.
+    @result Returns <code>true</code> if BPF tap is enabled,
+    <code>false</code> otherwise.
+*/
+    bool    isBPFTapEnabled( IOOptionBits options = 0 ) const;
+
+/*! @function getLoggingLevel
+    @abstract Query the logging level for the interface.
+    @abstract Allows a driver to poll the logging level after receiving a
+    <code>kIONetworkNotificationLoggingLevelChange</code> notification.
+    @param options No options are currently defined, always pass zero.
+    @result Returns the current logging level.
+*/
+    int32_t getLoggingLevel( IOOptionBits options = 0 ) const;
+
 /*! @enum OutputPacketSchedulingModel
     @discussion Output packet scheduling models.
     @constant kOutputPacketSchedulingModelNormal
@@ -1310,6 +1395,58 @@ public:
 
     OSMetaClassDeclareReservedUsed(IONetworkInterface, 10);
 
+/*! @function reportTransmitCompletionStatus
+    @abstract Report the transmit completion status for an outgoing packet.
+    @discussion Invoked by drivers that are capable of reporting when a packet
+    has been transmitted across the link layer. Besides reporting the packet
+    transmit status using this method, driver must also publish the
+    <code>kIONetworkFeatureTransmitCompletionStatus</code> feature.
+    @param packet The packet that was transmitted.
+    @param status The transmit status.
+    @param param1 Always pass zero.
+    @param param2 Always pass zero.
+    @param No options are currently defined, always pass zero.
+    @result <code>kIOReturnSuccess</code> if the transmit status was valid
+    and accepted, otherwise <code>kIOReturnBadArgument</code> for bad status,
+    or <code>kIOReturnError</code> if an error occurred when passing the status
+    to the networking stack.
+*/
+    IOReturn reportTransmitCompletionStatus(
+                            mbuf_t                  packet,
+                            IOReturn                status,
+                            uint32_t                param1  = 0,
+                            uint32_t                param2  = 0,
+                            IOOptionBits            options = 0 );
+
+/*! @function reportDatapathIssue
+    @abstract Used by kernel network driver or family to inform userspace
+    of a datapath issue.
+    @discussion An issue report will be sent to any userspace applications
+    or daemons that have registered for datapath issues notifications from
+    this network interface.
+    @param issue Subsystem specific error code.
+    @param data Reserved for future use.
+    @param length Reserved for future use.
+    @result Returns <code>kIOReturnSuccess</code> if successful,
+    otherwise an appropriate error code.
+*/
+    IOReturn reportDatapathIssue(
+                            IOReturn 	issue,
+                            void * 		data   = 0,
+                            IOByteCount length = 0 );
+
+/*! @function setPacketPollingParameters
+    @abstract Modify the input polling parameters.
+    @discussion Invokes <code>ifnet_set_poll_params()</code> using the
+    parameters provided.
+    @param params Polling parameters.
+    @param options No options are currently defined, always pass zero.
+    @result Returns <code>kIOReturnSuccess</code> if successful,
+    otherwise an appropriate error code.
+*/
+    IOReturn setPacketPollingParameters(
+                            const IONetworkPacketPollingParameters * params,
+                            IOOptionBits options = 0 );
 #else   /* !__PRIVATE_SPI__ */
     OSMetaClassDeclareReservedUnused( IONetworkInterface,  5);
     OSMetaClassDeclareReservedUnused( IONetworkInterface,  6);
