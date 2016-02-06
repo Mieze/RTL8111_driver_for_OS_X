@@ -8,7 +8,7 @@ OS X open source driver for the Realtek RTL8111/8168 family
 Due to the lack of an OS X driver that makes use of the advanced features of the Realtek RTL81111/8168 series I started a new project with the aim to create a state of the art driver that gets the most out of those NICs which can be found on virtually any cheap board on the market today. Based on Realtek's Linux driver (version 8.035.0) I have written a driver that is optimized for performance while making efficient use of system resources and keeping the CPU usage down under heavy load.
 
 Key Features of the Driver
-- Supports Realtek RTL8111/8168 B/C/D/E/F/G found on recent boards.
+- Supports Realtek RTL8111/8168 B/C/D/E/F/G/H found on recent boards.
 - Support for multisegment packets relieving the network stack of unnecessary copy operations when assembling packets for transmission.
 - No-copy receive and transmit. Only small packets are copied on reception because creating a copy is more efficient than allocating a new buffer.
 TCP, UDP and IPv4 checksum offload (receive and transmit).
@@ -49,6 +49,9 @@ The driver has been successfully tested under 10.8.2 - 10.8.5 and 10.9 with the 
 
 Changelog
 
+- Version 2.2.0d0 (2016-02-06):
+    - Improved media selection and reporting (flow control and EEE).
+    - Updated Linux sources to 8.041.000.
 - Version 2.0.0 (2015-07-14):
     - Replaced Apple headers with those from IONetworkingFamily-85.2 to fix compatibility issues with Mountain Lion.
 - Version 2.0.0 (2015-06-21):
