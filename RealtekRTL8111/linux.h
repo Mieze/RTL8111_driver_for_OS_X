@@ -15,7 +15,7 @@
  *
  * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
- * This driver is based on Realtek's r8168 Linux driver (8.035.0).
+ * This driver is based on Realtek's r8168 Linux driver (8.041.0).
  */
 
 #ifndef RealtekRTL8111_linux_h

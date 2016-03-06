@@ -15,10 +15,12 @@
  *
  * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
- * This driver is based on Realtek's r8168 Linux driver (8.037.0).
+ * This driver is based on Realtek's r8168 Linux driver (8.041.0).
  */
 
 #include "RealtekRTL8111Linux-8040000.h"
+
+#define CONFIG_RXPOLL
 
 #ifdef DEBUG
 #define DebugLog(args...) IOLog(args)
@@ -129,7 +131,7 @@ typedef struct RtlStatData {
 #define kFastIntrTreshhold 200000
 
 /* Treshhold value to wake a stalled queue */
-#define kTxQueueWakeTreshhold (kNumTxDesc / 8)
+#define kTxQueueWakeTreshhold (kNumTxDesc / 3)
 
 /* transmitter deadlock treshhold in seconds. */
 #define kTxDeadlockTreshhold 3
@@ -356,21 +358,25 @@ private:
     UInt16 intrMask;
     UInt16 intrMitigateValue;
     
-    /* flags */
-    bool isEnabled;
-	bool promiscusMode;
-	bool multicastMode;
-    bool linkUp;
-    
 #ifdef __PRIVATE_SPI__
     
 #ifdef CONFIG_RXPOLL
+    UInt16 intrMaskRxTx;
+    UInt16 intrMaskPoll;
+
     bool rxPoll;
+    bool polling;
 #endif /* CONFIG_RXPOLL */
     
 #else
     bool stalled;
 #endif /* __PRIVATE_SPI__ */
+
+    /* flags */
+    bool isEnabled;
+	bool promiscusMode;
+	bool multicastMode;
+    bool linkUp;
     
     bool needsUpdate;
     bool wolCapable;

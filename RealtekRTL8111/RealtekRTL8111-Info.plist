@@ -9,7 +9,7 @@
 	<key>CFBundleIconFile</key>
 	<string></string>
 	<key>CFBundleIdentifier</key>
-	<string>com.insanelymac.${PRODUCT_NAME:rfc1034identifier}</string>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -28,34 +28,34 @@
 		<dict>
 			<key>CFBundleIdentifier</key>
 			<string>com.insanelymac.${PRODUCT_NAME:rfc1034identifier}</string>
+			<key>Driver_Version</key>
+			<string>$MODULE_VERSION</string>
 			<key>IOClass</key>
 			<string>RTL8111</string>
-			<key>IOProviderClass</key>
-			<string>IOPCIDevice</string>
-			<key>IOProbeScore</key>
-			<integer>1000</integer>
 			<key>IOPCIMatch</key>
 			<string>0x816810ec 0x81681186</string>
+			<key>IOProbeScore</key>
+			<integer>1000</integer>
+			<key>IOProviderClass</key>
+			<string>IOPCIDevice</string>
 			<key>Model</key>
 			<string>RTL8111</string>
 			<key>Vendor</key>
 			<string>Realtek</string>
+			<key>disableASPM</key>
+			<true/>
+			<key>enableCSO6</key>
+			<true/>
 			<key>enableEEE</key>
 			<true/>
 			<key>enableTSO4</key>
 			<true/>
 			<key>enableTSO6</key>
 			<true/>
-			<key>enableCSO6</key>
-			<true/>
-			<key>disableASPM</key>
-			<true/>
-			<key>rxPolling</key>
-			<false/>
 			<key>intrMitigate</key>
 			<integer>53080</integer>
-			<key>Driver_Version</key>
-			<string>$MODULE_VERSION</string>
+			<key>rxPolling</key>
+			<true/>
 		</dict>
 	</dict>
 	<key>NSHumanReadableCopyright</key>

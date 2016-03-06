@@ -15,7 +15,7 @@
  *
  * Driver for Realtek RTL8111x PCIe ethernet controllers.
  *
- * This driver is based on Realtek's r8168 Linux driver (8.037.0).
+ * This driver is based on Realtek's r8168 Linux driver (8.041.0).
  */
 
 
@@ -67,6 +67,7 @@ bool RTL8111::init(OSDictionary *properties)
         
 #ifdef CONFIG_RXPOLL
         rxPoll = false;
+        polling = false;
 #endif /* CONFIG_RXPOLL */
 
 #else
@@ -88,8 +89,6 @@ bool RTL8111::init(OSDictionary *properties)
         pciDeviceData.subsystem_device = 0;
         linuxData.pci_dev = &pciDeviceData;
         intrMitigateValue = 0x5f51;
-        //txIntrCount = 0;
-        //txIntrRate = 0;
         lastIntrTime = 0;
         wolCapable = false;
         wolActive = false;
@@ -357,7 +356,13 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     needsUpdate = false;
     isEnabled = true;
     
-#ifndef __PRIVATE_SPI__
+#ifdef __PRIVATE_SPI__
+    
+#ifdef CONFIG_RXPOLL
+    polling = false;
+#endif /* CONFIG_RXPOLL */
+
+#else
     txQueue->setCapacity(kTransmitQueueCapacity);
     stalled = false;
 #endif /* __PRIVATE_SPI__ */
@@ -385,6 +390,11 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
 #ifdef __PRIVATE_SPI__
     netif->stopOutputThread();
     netif->flushOutputQueue();
+    
+#ifdef CONFIG_RXPOLL
+    polling = false;
+#endif /* CONFIG_RXPOLL */
+    
 #else
     txQueue->stop();
     txQueue->flush();
@@ -723,7 +733,7 @@ bool RTL8111::configureInterface(IONetworkInterface *interface)
     
 #ifdef CONFIG_RXPOLL
     if (rxPoll) {
-        error = interface->configureInputPacketPolling(kNumRxDesc, 0);
+        error = interface->configureInputPacketPolling(kNumRxDesc, kIONetworkWorkLoopSynchronous);
         
         if (error != kIOReturnSuccess) {
             IOLog("Ethernet [RealtekRTL8111]: configureInputPacketPolling() failed\n.");
@@ -1093,7 +1103,7 @@ void RTL8111::getParams()
     poll = OSDynamicCast(OSBoolean, getProperty(kEnableRxPollName));
     rxPoll = (poll) ? poll->getValue() : false;
     
-    IOLog("Ethernet [RealtekRTL8111]: RxPoll support %s.\n", enableTSO4 ? onName : offName);
+    IOLog("Ethernet [RealtekRTL8111]: RxPoll support %s.\n", rxPoll ? onName : offName);
 #endif /* CONFIG_RXPOLL */
 
 #endif /* __PRIVATE_SPI__ */
@@ -1339,8 +1349,8 @@ bool RTL8111::setupDMADescriptors()
         }
         rxMbufArray[i] = m;
         
-        if (rxMbufCursor->getPhysicalSegmentsWithCoalesce(m, &rxSegment, 1) != 1) {
-            IOLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() for receive buffer failed.\n");
+        if (rxMbufCursor->getPhysicalSegments(m, &rxSegment, 1) != 1) {
+            IOLog("Ethernet [RealtekRTL8111]: getPhysicalSegments() for receive buffer failed.\n");
             goto error6;
         }
         opts1 = (UInt32)rxSegment.length;
@@ -1521,7 +1531,7 @@ void RTL8111::txInterrupt()
 
         /* Now it's time to free the last mbuf as we can be sure it's not in use anymore. */
         if (txNext2FreeMbuf)
-            freePacket(txNext2FreeMbuf);
+            freePacket(txNext2FreeMbuf, kDelayFree);
 
         txNext2FreeMbuf = txMbufArray[txDirtyDescIndex];
         txMbufArray[txDirtyDescIndex] = NULL;
@@ -1530,20 +1540,31 @@ void RTL8111::txInterrupt()
         ++txDirtyDescIndex &= kTxDescMask;
     }
 #ifdef __PRIVATE_SPI__
-    if (txNumFreeDesc > kTxQueueWakeTreshhold)
-        netif->signalOutputThread();
+    if (oldDirtyIndex != txDirtyDescIndex) {
+        if (txNumFreeDesc > kTxQueueWakeTreshhold)
+            netif->signalOutputThread();
+        
+        WriteReg8(TxPoll, NPQ);
+        releaseFreePackets();
+    }
 #else
     if (stalled && (txNumFreeDesc > kTxQueueWakeTreshhold)) {
         DebugLog("Ethernet [RealtekRTL8111]: Restart stalled queue!\n");
         txQueue->service(IOBasicOutputQueue::kServiceAsync);
         stalled = false;
     }
-#endif /* __PRIVATE_SPI__ */
-
     if (oldDirtyIndex != txDirtyDescIndex)
         WriteReg8(TxPoll, NPQ);
     
+    releaseFreePackets();
+#endif /* __PRIVATE_SPI__ */
+    
+#ifdef CONFIG_RXPOLL
+    if (!polling)
+        etherStats->dot3TxExtraEntry.interrupts++;
+#else
     etherStats->dot3TxExtraEntry.interrupts++;
+#endif  /* CONFIG_RXPOLL */
 }
 
 void RTL8111::rxInterrupt()
@@ -1590,8 +1611,8 @@ void RTL8111::rxInterrupt()
         
         /* If the packet was replaced we have to update the descriptor's buffer address. */
         if (replaced) {
-            if (rxMbufCursor->getPhysicalSegmentsWithCoalesce(bufPkt, &rxSegment, 1) != 1) {
-                DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed.\n");
+            if (rxMbufCursor->getPhysicalSegments(bufPkt, &rxSegment, 1) != 1) {
+                DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegments() failed.\n");
                 etherStats->dot3RxExtraEntry.resourceErrors++;
                 freePacket(bufPkt);
                 opts1 |= kRxBufferPktSize;
@@ -1733,17 +1754,29 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
         pciErrorInterrupt();
         goto done;
     }
+#ifdef CONFIG_RXPOLL
+    if (!polling) {
+        /* Rx interrupt */
+        if (status & rxMask)
+            rxInterrupt();
+
+        /* Tx interrupt */
+        if (status & (TxOK | TxErr | TxDescUnavail))
+            txInterrupt();
+    }
+#else
     /* Rx interrupt */
     if (status & rxMask)
         rxInterrupt();
-
+    
     /* Tx interrupt */
     if (status & (TxOK | TxErr | TxDescUnavail))
         txInterrupt();
-    
+#endif /* CONFIG_RXPOLL */
+
     if (status & LinkChg)
         checkLinkStatus();
-    
+
 done:
     WriteReg16(IntrStatus, status);
 	WriteReg16(IntrMask, intrMask);
@@ -1788,21 +1821,21 @@ bool RTL8111::checkForDeadlock()
 
 IOReturn RTL8111::setInputPacketPollingEnable(IONetworkInterface *interface, bool enabled)
 {
-    DebugLog("setInputPacketPollingEnable() ===>\n");
- /*
+    //DebugLog("setInputPacketPollingEnable() ===>\n");
+
     if (enabled) {
-        intrMask = intrPollMask;
+        intrMask = intrMaskPoll;
         polling = true;
     } else {
-        intrMask = intrRxMask;
+        intrMask = intrMaskRxTx;
         polling = false;
     }
     if(isEnabled)
         WriteReg16(IntrMask, intrMask);
     
-    DebugLog("input polling %s.\n", enabled ? "enabled" : "disabled");
-*/
-    DebugLog("setInputPacketPollingEnable() <===\n");
+    //DebugLog("input polling %s.\n", enabled ? "enabled" : "disabled");
+
+    //DebugLog("setInputPacketPollingEnable() <===\n");
     
     return kIOReturnSuccess;
 }
@@ -1853,8 +1886,8 @@ void RTL8111::pollInputPackets(IONetworkInterface *interface, uint32_t maxCount,
         
         /* If the packet was replaced we have to update the descriptor's buffer address. */
         if (replaced) {
-            if (rxMbufCursor->getPhysicalSegmentsWithCoalesce(bufPkt, &rxSegment, 1) != 1) {
-                DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegmentsWithCoalesce() failed.\n");
+            if (rxMbufCursor->getPhysicalSegments(bufPkt, &rxSegment, 1) != 1) {
+                DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegments() failed.\n");
                 etherStats->dot3RxExtraEntry.resourceErrors++;
                 freePacket(bufPkt);
                 opts1 |= kRxBufferPktSize;
@@ -1888,6 +1921,8 @@ void RTL8111::pollInputPackets(IONetworkInterface *interface, uint32_t maxCount,
         ++rxNextDescIndex &= kRxDescMask;
         desc = &rxDescArray[rxNextDescIndex];
     }
+    /* Finally cleanup the transmitter ring. */
+    txInterrupt();
     
     //DebugLog("pollInputPackets() <===\n");
 }
@@ -2077,7 +2112,13 @@ void RTL8111::setLinkUp(UInt8 linkState)
         speed = SPEED_1000;
         speedName = speed1GName;
         duplexName = duplexFullName;
+       
+#ifdef CONFIG_RXPOLL
+        if (!rxPoll)
+            newIntrMitigate = intrMitigateValue;
+#else
         newIntrMitigate = intrMitigateValue;
+#endif /* CONFIG_RXPOLL */
 
         if (flowCtl == kFlowControlOn) {
             if (eee & kEEEMode1000) {
@@ -2140,6 +2181,31 @@ void RTL8111::setLinkUp(UInt8 linkState)
     
 #ifdef __PRIVATE_SPI__
     /* Start output thread, statistics update and watchdog. */
+    
+#ifdef CONFIG_RXPOLL
+    if (rxPoll) {
+        IONetworkPacketPollingParameters pollParams;
+        
+        bzero(&pollParams, sizeof(IONetworkPacketPollingParameters));
+        
+        if (speed == SPEED_10) {
+            pollParams.lowThresholdPackets = 2;
+            pollParams.highThresholdPackets = 8;
+            pollParams.lowThresholdBytes = 0x400;
+            pollParams.highThresholdBytes = 0x1800;
+            pollParams.pollIntervalTime = 1000000;  /* 1ms */
+        } else {
+            pollParams.lowThresholdPackets = 10;
+            pollParams.highThresholdPackets = 40;
+            pollParams.lowThresholdBytes = 0x1000;
+            pollParams.highThresholdBytes = 0x10000;
+            pollParams.pollIntervalTime = (speed == SPEED_1000) ? 200000 : 800000;  /* 200µs / 800µs */
+        }
+        netif->setPacketPollingParameters(&pollParams, 0);
+        DebugLog("Ethernet [RealtekRTL8111]: pollIntervalTime: %lluus\n", (pollParams.pollIntervalTime / 1000));
+    }
+#endif /* CONFIG_RXPOLL */
+
     netif->startOutputThread();
 #else
     /* Restart txQueue, statistics updates and watchdog. */
@@ -2161,7 +2227,6 @@ void RTL8111::setLinkDown()
 
     deadlockWarn = 0;
     needsUpdate = false;
-    //txIntrRate = 0;
 
 #ifdef __PRIVATE_SPI__
     /* Stop output thread and flush output queue. */
@@ -2592,7 +2657,25 @@ bool RTL8111::initRTL8111()
           origMacAddr.bytes[4], origMacAddr.bytes[5]);
     
     tp->cp_cmd = ReadReg16(CPlusCmd);
+    
+#ifdef __PRIVATE_SPI__
+
+#ifdef CONFIG_RXPOLL
+    if (revisionC) {
+        intrMaskRxTx = (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
+        intrMaskPoll = (SYSErr | LinkChg);
+    } else {
+        intrMaskRxTx = (SYSErr | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
+        intrMaskPoll = SYSErr;
+    }
+    intrMask = intrMaskRxTx;
+#else
     intrMask = (revisionC) ? (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK) : (SYSErr | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
+#endif /* CONFIG_RXPOLL */
+    
+#else
+    intrMask = (revisionC) ? (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK) : (SYSErr | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
+#endif /* __PRIVATE_SPI__ */
 
     /* Get the RxConfig parameters. */
     rxConfigReg = rtl_chip_info[tp->chipset].RCR_Cfg;
@@ -2650,6 +2733,11 @@ void RTL8111::enableRTL8111()
 {
     struct rtl8168_private *tp = &linuxData;
     
+#ifdef CONFIG_RXPOLL
+    intrMask = intrMaskRxTx;
+    polling = false;
+#endif  /* CONFIG_RXPOLL */
+
     rtl8168_exit_oob(tp);
     rtl8168_hw_init(tp);
     rtl8168_nic_reset(tp);
@@ -3899,22 +3987,6 @@ void RTL8111::hardwareD3Para()
 
 void RTL8111::timerActionRTL8111C(IOTimerEventSource *timer)
 {
-    /*
-    UInt32 count1, count2;
-    static UInt32 txIntrCount = 0;
-    static UInt32 rxIntrCount = 0;
-    */
-    //DebugLog("timerActionRTL8111C() ===>\n");
-    
-    /* Calculate the transmitter and receiver interrupt rate.*/
-    /*
-    count1 = etherStats->dot3TxExtraEntry.interrupts;
-    count2 = etherStats->dot3RxExtraEntry.interrupts;
-    
-    IOLog("Ethernet [RealtekRTL8111]: Interrupt rate: tx=%u, rx=%u.\n", count1 - txIntrCount, count2 - rxIntrCount);
-    txIntrCount = count1;
-    rxIntrCount = count2;
-    */
     if (!linkUp) {
         DebugLog("Ethernet [RealtekRTL8111]: Timer fired while link down.\n");
         goto done;
@@ -3946,22 +4018,6 @@ void RTL8111::timerActionRTL8111B(IOTimerEventSource *timer)
 {
 	UInt8 currLinkState;
     bool newLinkState;
-    /*
-    UInt32 count1, count2;
-    static UInt32 txIntrCount = 0;
-    static UInt32 rxIntrCount = 0;
-    */
-    //DebugLog("timerActionRTL8111C() ===>\n");
-    
-    /* Calculate the transmitter and receiver interrupt rate.*/
-    /*
-    count1 = etherStats->dot3TxExtraEntry.interrupts;
-    count2 = etherStats->dot3RxExtraEntry.interrupts;
-     
-    IOLog("Ethernet [RealtekRTL8111]: Interrupt rate: tx=%u, rx=%u.\n", count1 - txIntrCount, count2 - rxIntrCount);
-    txIntrCount = count1;
-    rxIntrCount = count2;
-    */
 
     currLinkState = ReadReg8(PHYstatus);
 	newLinkState = (currLinkState & LinkStatus) ? true : false;
