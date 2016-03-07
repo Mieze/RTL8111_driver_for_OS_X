@@ -20,8 +20,6 @@
 
 #include "RealtekRTL8111Linux-8040000.h"
 
-#define CONFIG_RXPOLL
-
 #ifdef DEBUG
 #define DebugLog(args...) IOLog(args)
 #else
@@ -180,11 +178,11 @@ enum
 #define kDriverVersionName "Driver_Version"
 #define kNameLenght 64
 
-#ifdef CONFIG_RXPOLL
+#ifdef __PRIVATE_SPI__
 
 #define kEnableRxPollName "rxPolling"
 
-#endif /* CONFIG_RXPOLL */
+#endif /* __PRIVATE_SPI__ */
 
 extern const struct RTLChipInfo rtl_chip_info[];
 
@@ -211,12 +209,8 @@ public:
 	
 #ifdef __PRIVATE_SPI__
     virtual IOReturn outputStart(IONetworkInterface *interface, IOOptionBits options );
-    
-#ifdef CONFIG_RXPOLL
     virtual IOReturn setInputPacketPollingEnable(IONetworkInterface *interface, bool enabled);
-    virtual void pollInputPackets(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context );
-#endif /* CONFIG_RXPOLL */
-
+    virtual void pollInputPackets(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
 #else
     virtual UInt32 outputPacket(mbuf_t m, void *param);
 #endif /* __PRIVATE_SPI__ */
@@ -256,7 +250,13 @@ private:
     void interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
     void pciErrorInterrupt();
     void txInterrupt();
+    
+#ifdef __PRIVATE_SPI__
+    UInt32 rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
+#else
     void rxInterrupt();
+#endif /* __PRIVATE_SPI__ */
+
     bool setupDMADescriptors();
     void freeDMADescriptors();
     void txClearDescriptors();
@@ -359,15 +359,11 @@ private:
     UInt16 intrMitigateValue;
     
 #ifdef __PRIVATE_SPI__
-    
-#ifdef CONFIG_RXPOLL
     UInt16 intrMaskRxTx;
     UInt16 intrMaskPoll;
 
     bool rxPoll;
     bool polling;
-#endif /* CONFIG_RXPOLL */
-    
 #else
     bool stalled;
 #endif /* __PRIVATE_SPI__ */

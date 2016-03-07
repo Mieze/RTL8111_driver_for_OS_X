@@ -64,12 +64,8 @@ bool RTL8111::init(OSDictionary *properties)
         linkUp = false;
         
 #ifdef __PRIVATE_SPI__
-        
-#ifdef CONFIG_RXPOLL
         rxPoll = false;
         polling = false;
-#endif /* CONFIG_RXPOLL */
-
 #else
         stalled = false;
 #endif /* __PRIVATE_SPI__ */
@@ -357,11 +353,7 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     isEnabled = true;
     
 #ifdef __PRIVATE_SPI__
-    
-#ifdef CONFIG_RXPOLL
     polling = false;
-#endif /* CONFIG_RXPOLL */
-
 #else
     txQueue->setCapacity(kTransmitQueueCapacity);
     stalled = false;
@@ -391,10 +383,7 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
     netif->stopOutputThread();
     netif->flushOutputQueue();
     
-#ifdef CONFIG_RXPOLL
     polling = false;
-#endif /* CONFIG_RXPOLL */
-    
 #else
     txQueue->stop();
     txQueue->flush();
@@ -730,8 +719,6 @@ bool RTL8111::configureInterface(IONetworkInterface *interface)
         result = false;
         goto done;
     }
-    
-#ifdef CONFIG_RXPOLL
     if (rxPoll) {
         error = interface->configureInputPacketPolling(kNumRxDesc, kIONetworkWorkLoopSynchronous);
         
@@ -741,8 +728,6 @@ bool RTL8111::configureInterface(IONetworkInterface *interface)
             goto done;
         }
     }
-#endif /* CONFIG_RXPOLL */
-
 #endif /* __PRIVATE_SPI__ */
 
     snprintf(modelName, kNameLenght, "Realtek %s PCI Express Gigabit Ethernet", rtl_chip_info[linuxData.chipset].name);
@@ -1073,9 +1058,9 @@ void RTL8111::getParams()
     OSNumber *intrMit;
     OSBoolean *enableEEE;
 
-#ifdef CONFIG_RXPOLL
+#ifdef __PRIVATE_SPI__
     OSBoolean *poll;
-#endif /* CONFIG_RXPOLL */
+#endif /* __PRIVATE_SPI__ */
 
     OSBoolean *tso4;
     OSBoolean *tso6;
@@ -1098,14 +1083,10 @@ void RTL8111::getParams()
     IOLog("Ethernet [RealtekRTL8111]: EEE support %s.\n", linuxData.eeeEnable ? onName : offName);
     
 #ifdef __PRIVATE_SPI__
-    
-#ifdef CONFIG_RXPOLL
     poll = OSDynamicCast(OSBoolean, getProperty(kEnableRxPollName));
     rxPoll = (poll) ? poll->getValue() : false;
     
     IOLog("Ethernet [RealtekRTL8111]: RxPoll support %s.\n", rxPoll ? onName : offName);
-#endif /* CONFIG_RXPOLL */
-
 #endif /* __PRIVATE_SPI__ */
 
     tso4 = OSDynamicCast(OSBoolean, getProperty(kEnableTSO4Name));
@@ -1547,6 +1528,8 @@ void RTL8111::txInterrupt()
         WriteReg8(TxPoll, NPQ);
         releaseFreePackets();
     }
+    if (!polling)
+        etherStats->dot3TxExtraEntry.interrupts++;
 #else
     if (stalled && (txNumFreeDesc > kTxQueueWakeTreshhold)) {
         DebugLog("Ethernet [RealtekRTL8111]: Restart stalled queue!\n");
@@ -1557,15 +1540,96 @@ void RTL8111::txInterrupt()
         WriteReg8(TxPoll, NPQ);
     
     releaseFreePackets();
+    etherStats->dot3TxExtraEntry.interrupts++;
 #endif /* __PRIVATE_SPI__ */
     
-#ifdef CONFIG_RXPOLL
-    if (!polling)
-        etherStats->dot3TxExtraEntry.interrupts++;
-#else
-    etherStats->dot3TxExtraEntry.interrupts++;
-#endif  /* CONFIG_RXPOLL */
 }
+
+#ifdef __PRIVATE_SPI__
+
+UInt32 RTL8111::rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context)
+{
+    IOPhysicalSegment rxSegment;
+    RtlDmaDesc *desc = &rxDescArray[rxNextDescIndex];
+    mbuf_t bufPkt, newPkt;
+    UInt64 addr;
+    UInt32 opts1, opts2;
+    UInt32 descStatus1, descStatus2;
+    UInt32 pktSize;
+    UInt32 goodPkts = 0;
+    UInt16 vlanTag;
+    bool replaced;
+    
+    while (!((descStatus1 = OSSwapLittleToHostInt32(desc->opts1)) & DescOwn) && (goodPkts < maxCount)) {
+        opts1 = (rxNextDescIndex == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
+        opts2 = 0;
+        addr = 0;
+        
+        /* As we don't support jumbo frames we consider fragmented packets as errors. */
+        if ((descStatus1 & (FirstFrag|LastFrag)) != (FirstFrag|LastFrag)) {
+            DebugLog("Ethernet [RealtekRTL8111]: Fragmented packet.\n");
+            etherStats->dot3StatsEntry.frameTooLongs++;
+            opts1 |= kRxBufferPktSize;
+            goto nextDesc;
+        }
+        
+        descStatus2 = OSSwapLittleToHostInt32(desc->opts2);
+        pktSize = (descStatus1 & 0x1fff) - kIOEthernetCRCSize;
+        bufPkt = rxMbufArray[rxNextDescIndex];
+        vlanTag = (descStatus2 & RxVlanTag) ? OSSwapInt16(descStatus2 & 0xffff) : 0;
+        //DebugLog("rxInterrupt(): descStatus1=0x%x, descStatus2=0x%x, pktSize=%u\n", descStatus1, descStatus2, pktSize);
+        
+        newPkt = replaceOrCopyPacket(&bufPkt, pktSize, &replaced);
+        
+        if (!newPkt) {
+            /* Allocation of a new packet failed so that we must leave the original packet in place. */
+            DebugLog("Ethernet [RealtekRTL8111]: replaceOrCopyPacket() failed.\n");
+            etherStats->dot3RxExtraEntry.resourceErrors++;
+            opts1 |= kRxBufferPktSize;
+            goto nextDesc;
+        }
+        
+        /* If the packet was replaced we have to update the descriptor's buffer address. */
+        if (replaced) {
+            if (rxMbufCursor->getPhysicalSegments(bufPkt, &rxSegment, 1) != 1) {
+                DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegments() failed.\n");
+                etherStats->dot3RxExtraEntry.resourceErrors++;
+                freePacket(bufPkt);
+                opts1 |= kRxBufferPktSize;
+                goto nextDesc;
+            }
+            opts1 |= ((UInt32)rxSegment.length & 0x0000ffff);
+            addr = rxSegment.location;
+            rxMbufArray[rxNextDescIndex] = bufPkt;
+        } else {
+            opts1 |= kRxBufferPktSize;
+        }
+        getChecksumResult(newPkt, descStatus1, descStatus2);
+        
+        /* Also get the VLAN tag if there is any. */
+        if (vlanTag)
+            setVlanTag(newPkt, vlanTag);
+        
+        mbuf_pkthdr_setlen(newPkt, pktSize);
+        mbuf_setlen(newPkt, pktSize);
+        interface->enqueueInputPacket(newPkt, pollQueue);
+        goodPkts++;
+        
+        /* Finally update the descriptor and get the next one to examine. */
+    nextDesc:
+        if (addr)
+            desc->addr = OSSwapHostToLittleInt64(addr);
+        
+        desc->opts2 = OSSwapHostToLittleInt32(opts2);
+        desc->opts1 = OSSwapHostToLittleInt32(opts1);
+        
+        ++rxNextDescIndex &= kRxDescMask;
+        desc = &rxDescArray[rxNextDescIndex];
+    }
+    return goodPkts;
+}
+
+#else
 
 void RTL8111::rxInterrupt()
 {
@@ -1647,6 +1711,8 @@ void RTL8111::rxInterrupt()
     if (goodPkts)
         netif->flushInputQueue();
 }
+
+#endif /* __PRIVATE_SPI__ */
 
 void RTL8111::checkLinkStatus()
 {
@@ -1734,6 +1800,7 @@ void RTL8111::checkLinkStatus()
 void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count)
 {
     UInt64 time, abstime;
+    UInt32 packets;
 	UInt16 status;
     UInt16 rxMask;
     
@@ -1754,12 +1821,15 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
         pciErrorInterrupt();
         goto done;
     }
-#ifdef CONFIG_RXPOLL
+#ifdef __PRIVATE_SPI__
     if (!polling) {
         /* Rx interrupt */
-        if (status & rxMask)
-            rxInterrupt();
-
+        if (status & rxMask) {
+            packets = rxInterrupt(netif, kNumRxDesc, NULL, NULL);
+            
+            if (packets)
+                netif->flushInputQueue();
+        }
         /* Tx interrupt */
         if (status & (TxOK | TxErr | TxDescUnavail))
             txInterrupt();
@@ -1772,7 +1842,7 @@ void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     /* Tx interrupt */
     if (status & (TxOK | TxErr | TxDescUnavail))
         txInterrupt();
-#endif /* CONFIG_RXPOLL */
+#endif /* __PRIVATE_SPI__ */
 
     if (status & LinkChg)
         checkLinkStatus();
@@ -1817,7 +1887,7 @@ bool RTL8111::checkForDeadlock()
 
 #pragma mark --- rx poll methods ---
 
-#ifdef CONFIG_RXPOLL
+#ifdef __PRIVATE_SPI__
 
 IOReturn RTL8111::setInputPacketPollingEnable(IONetworkInterface *interface, bool enabled)
 {
@@ -1842,92 +1912,17 @@ IOReturn RTL8111::setInputPacketPollingEnable(IONetworkInterface *interface, boo
 
 void RTL8111::pollInputPackets(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context )
 {
-    IOPhysicalSegment rxSegment;
-    RtlDmaDesc *desc = &rxDescArray[rxNextDescIndex];
-    mbuf_t bufPkt, newPkt;
-    UInt64 addr;
-    UInt32 opts1, opts2;
-    UInt32 descStatus1, descStatus2;
-    UInt32 pktSize;
-    UInt16 vlanTag;
-    UInt16 goodPkts = 0;
-    bool replaced;
-    
     //DebugLog("pollInputPackets() ===>\n");
     
-    while (!((descStatus1 = OSSwapLittleToHostInt32(desc->opts1)) & DescOwn) && (goodPkts < maxCount)) {
-        opts1 = (rxNextDescIndex == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
-        opts2 = 0;
-        addr = 0;
-        
-        /* As we don't support jumbo frames we consider fragmented packets as errors. */
-        if ((descStatus1 & (FirstFrag|LastFrag)) != (FirstFrag|LastFrag)) {
-            DebugLog("Ethernet [RealtekRTL8111]: Fragmented packet.\n");
-            etherStats->dot3StatsEntry.frameTooLongs++;
-            opts1 |= kRxBufferPktSize;
-            goto nextDesc;
-        }
-        
-        descStatus2 = OSSwapLittleToHostInt32(desc->opts2);
-        pktSize = (descStatus1 & 0x1fff) - kIOEthernetCRCSize;
-        bufPkt = rxMbufArray[rxNextDescIndex];
-        vlanTag = (descStatus2 & RxVlanTag) ? OSSwapInt16(descStatus2 & 0xffff) : 0;
-        //DebugLog("rxInterrupt(): descStatus1=0x%x, descStatus2=0x%x, pktSize=%u\n", descStatus1, descStatus2, pktSize);
-        
-        newPkt = replaceOrCopyPacket(&bufPkt, pktSize, &replaced);
-        
-        if (!newPkt) {
-            /* Allocation of a new packet failed so that we must leave the original packet in place. */
-            DebugLog("Ethernet [RealtekRTL8111]: replaceOrCopyPacket() failed.\n");
-            etherStats->dot3RxExtraEntry.resourceErrors++;
-            opts1 |= kRxBufferPktSize;
-            goto nextDesc;
-        }
-        
-        /* If the packet was replaced we have to update the descriptor's buffer address. */
-        if (replaced) {
-            if (rxMbufCursor->getPhysicalSegments(bufPkt, &rxSegment, 1) != 1) {
-                DebugLog("Ethernet [RealtekRTL8111]: getPhysicalSegments() failed.\n");
-                etherStats->dot3RxExtraEntry.resourceErrors++;
-                freePacket(bufPkt);
-                opts1 |= kRxBufferPktSize;
-                goto nextDesc;
-            }
-            opts1 |= ((UInt32)rxSegment.length & 0x0000ffff);
-            addr = rxSegment.location;
-            rxMbufArray[rxNextDescIndex] = bufPkt;
-        } else {
-            opts1 |= kRxBufferPktSize;
-        }
-        getChecksumResult(newPkt, descStatus1, descStatus2);
-        
-        /* Also get the VLAN tag if there is any. */
-        if (vlanTag)
-            setVlanTag(newPkt, vlanTag);
-        
-        mbuf_pkthdr_setlen(newPkt, pktSize);
-        mbuf_setlen(newPkt, pktSize);
-        netif->enqueueInputPacket(newPkt, pollQueue);
-        goodPkts++;
-        
-        /* Finally update the descriptor and get the next one to examine. */
-    nextDesc:
-        if (addr)
-            desc->addr = OSSwapHostToLittleInt64(addr);
-        
-        desc->opts2 = OSSwapHostToLittleInt32(opts2);
-        desc->opts1 = OSSwapHostToLittleInt32(opts1);
-        
-        ++rxNextDescIndex &= kRxDescMask;
-        desc = &rxDescArray[rxNextDescIndex];
-    }
+    rxInterrupt(interface, maxCount, pollQueue, context);
+    
     /* Finally cleanup the transmitter ring. */
     txInterrupt();
     
     //DebugLog("pollInputPackets() <===\n");
 }
 
-#endif /* CONFIG_RXPOLL */
+#endif /* __PRIVATE_SPI__ */
 
 #pragma mark --- hardware specific methods ---
 
@@ -2113,12 +2108,12 @@ void RTL8111::setLinkUp(UInt8 linkState)
         speedName = speed1GName;
         duplexName = duplexFullName;
        
-#ifdef CONFIG_RXPOLL
+#ifdef __PRIVATE_SPI__
         if (!rxPoll)
             newIntrMitigate = intrMitigateValue;
 #else
         newIntrMitigate = intrMitigateValue;
-#endif /* CONFIG_RXPOLL */
+#endif /* __PRIVATE_SPI__ */
 
         if (flowCtl == kFlowControlOn) {
             if (eee & kEEEMode1000) {
@@ -2181,8 +2176,6 @@ void RTL8111::setLinkUp(UInt8 linkState)
     
 #ifdef __PRIVATE_SPI__
     /* Start output thread, statistics update and watchdog. */
-    
-#ifdef CONFIG_RXPOLL
     if (rxPoll) {
         IONetworkPacketPollingParameters pollParams;
         
@@ -2204,8 +2197,6 @@ void RTL8111::setLinkUp(UInt8 linkState)
         netif->setPacketPollingParameters(&pollParams, 0);
         DebugLog("Ethernet [RealtekRTL8111]: pollIntervalTime: %lluus\n", (pollParams.pollIntervalTime / 1000));
     }
-#endif /* CONFIG_RXPOLL */
-
     netif->startOutputThread();
 #else
     /* Restart txQueue, statistics updates and watchdog. */
@@ -2659,8 +2650,6 @@ bool RTL8111::initRTL8111()
     tp->cp_cmd = ReadReg16(CPlusCmd);
     
 #ifdef __PRIVATE_SPI__
-
-#ifdef CONFIG_RXPOLL
     if (revisionC) {
         intrMaskRxTx = (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
         intrMaskPoll = (SYSErr | LinkChg);
@@ -2669,10 +2658,6 @@ bool RTL8111::initRTL8111()
         intrMaskPoll = SYSErr;
     }
     intrMask = intrMaskRxTx;
-#else
-    intrMask = (revisionC) ? (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK) : (SYSErr | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
-#endif /* CONFIG_RXPOLL */
-    
 #else
     intrMask = (revisionC) ? (SYSErr | LinkChg | RxDescUnavail | TxErr | TxOK | RxErr | RxOK) : (SYSErr | RxDescUnavail | TxErr | TxOK | RxErr | RxOK);
 #endif /* __PRIVATE_SPI__ */
@@ -2733,10 +2718,10 @@ void RTL8111::enableRTL8111()
 {
     struct rtl8168_private *tp = &linuxData;
     
-#ifdef CONFIG_RXPOLL
+#ifdef __PRIVATE_SPI__
     intrMask = intrMaskRxTx;
     polling = false;
-#endif  /* CONFIG_RXPOLL */
+#endif  /* __PRIVATE_SPI__ */
 
     rtl8168_exit_oob(tp);
     rtl8168_hw_init(tp);
@@ -2789,7 +2774,14 @@ void RTL8111::restartRTL8111()
     /* Reset NIC and cleanup both descriptor rings. */
     rtl8168_nic_reset(&linuxData);
     txClearDescriptors();
+
+#ifdef __PRIVATE_SPI__
+    if (rxInterrupt(netif, kNumRxDesc, NULL, NULL))
+        netif->flushInputQueue();
+#else
     rxInterrupt();
+#endif /* __PRIVATE_SPI__ */
+
     rxNextDescIndex = 0;
     deadlockWarn = 0;
     
