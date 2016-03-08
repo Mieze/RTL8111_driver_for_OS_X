@@ -25177,7 +25177,6 @@ void rtl8168_sleep_rx_enable(struct net_device *dev)
 
         if ((tp->mcfg == CFG_METHOD_1) || (tp->mcfg == CFG_METHOD_2)) {
                 RTL_W8(ChipCmd, CmdReset);
-                //rtl8168_rx_desc_offset0_init(tp, 0);
                 RTL_W8(ChipCmd, CmdRxEnb);
         } else if (tp->mcfg == CFG_METHOD_14 || tp->mcfg == CFG_METHOD_15) {
                 rtl8168_ephy_write(ioaddr, 0x19, 0xFF64);

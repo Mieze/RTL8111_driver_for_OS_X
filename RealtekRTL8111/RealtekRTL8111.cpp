@@ -341,7 +341,6 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
         selectedMedium = mediumTable[MEDIUM_INDEX_AUTO];
     }
     selectMedium(selectedMedium);
-    setLinkStatus(kIONetworkLinkValid);
     enableRTL8111();
     
     /* We have to enable the interrupt because we are using a msi interrupt. */
@@ -402,11 +401,6 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
 
     disableRTL8111();
     
-    if (linkUp)
-        IOLog("Ethernet [RealtekRTL8111]: Link down on en%u\n", netif->getUnitNumber());
-    
-    linkUp = false;
-    setLinkStatus(kIONetworkLinkValid);
     txClearDescriptors();
     
     if (pciDevice && pciDevice->isOpen())
@@ -1536,10 +1530,10 @@ void RTL8111::txInterrupt()
         txQueue->service(IOBasicOutputQueue::kServiceAsync);
         stalled = false;
     }
-    if (oldDirtyIndex != txDirtyDescIndex)
+    if (oldDirtyIndex != txDirtyDescIndex) {
         WriteReg8(TxPoll, NPQ);
-    
-    releaseFreePackets();
+        releaseFreePackets();
+    }
     etherStats->dot3TxExtraEntry.interrupts++;
 #endif /* __PRIVATE_SPI__ */
     
@@ -2173,12 +2167,11 @@ void RTL8111::setLinkUp(UInt8 linkState)
     startRTL8111(newIntrMitigate, false);
     linkUp = true;
     setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, mediumTable[mediumIndex], mediumSpeed, NULL);
-    
+
 #ifdef __PRIVATE_SPI__
     /* Start output thread, statistics update and watchdog. */
     if (rxPoll) {
-        IONetworkPacketPollingParameters pollParams;
-        
+        /* Update poll params according to link speed. */
         bzero(&pollParams, sizeof(IONetworkPacketPollingParameters));
         
         if (speed == SPEED_10) {
@@ -2192,7 +2185,7 @@ void RTL8111::setLinkUp(UInt8 linkState)
             pollParams.highThresholdPackets = 40;
             pollParams.lowThresholdBytes = 0x1000;
             pollParams.highThresholdBytes = 0x10000;
-            pollParams.pollIntervalTime = (speed == SPEED_1000) ? 200000 : 800000;  /* 200µs / 800µs */
+            pollParams.pollIntervalTime = (speed == SPEED_1000) ? 200000 : 1000000;  /* 200µs / 1ms */
         }
         netif->setPacketPollingParameters(&pollParams, 0);
         DebugLog("Ethernet [RealtekRTL8111]: pollIntervalTime: %lluus\n", (pollParams.pollIntervalTime / 1000));
@@ -2718,6 +2711,8 @@ void RTL8111::enableRTL8111()
 {
     struct rtl8168_private *tp = &linuxData;
     
+    setLinkStatus(kIONetworkLinkValid);
+
 #ifdef __PRIVATE_SPI__
     intrMask = intrMaskRxTx;
     polling = false;
@@ -2738,7 +2733,7 @@ void RTL8111::enableRTL8111()
 void RTL8111::disableRTL8111()
 {
     struct rtl8168_private *tp = &linuxData;
-        
+    
 	rtl8168_dsm(tp, DSM_IF_DOWN);
 
     /* Disable all interrupts by clearing the interrupt mask. */
@@ -2749,6 +2744,12 @@ void RTL8111::disableRTL8111()
     rtl8168_sleep_rx_enable(tp);
     hardwareD3Para();
 	rtl8168_powerdown_pll(tp);
+    
+    if (linkUp) {
+        linkUp = false;
+        setLinkStatus(kIONetworkLinkValid);
+        IOLog("Ethernet [RealtekRTL8111]: Link down on en%u\n", netif->getUnitNumber());
+    }
 }
 
 /* Reset the NIC in case a tx deadlock or a pci error occurred. timerSource and txQueue

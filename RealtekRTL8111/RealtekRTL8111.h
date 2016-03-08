@@ -362,6 +362,8 @@ private:
     UInt16 intrMaskRxTx;
     UInt16 intrMaskPoll;
 
+    IONetworkPacketPollingParameters pollParams;
+
     bool rxPoll;
     bool polling;
 #else
