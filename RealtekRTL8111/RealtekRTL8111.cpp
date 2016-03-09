@@ -2185,7 +2185,7 @@ void RTL8111::setLinkUp(UInt8 linkState)
             pollParams.highThresholdPackets = 40;
             pollParams.lowThresholdBytes = 0x1000;
             pollParams.highThresholdBytes = 0x10000;
-            pollParams.pollIntervalTime = (speed == SPEED_1000) ? 200000 : 1000000;  /* 200µs / 1ms */
+            pollParams.pollIntervalTime = (speed == SPEED_1000) ? 170000 : 1000000;  /* 170µs / 1ms */
         }
         netif->setPacketPollingParameters(&pollParams, 0);
         DebugLog("Ethernet [RealtekRTL8111]: pollIntervalTime: %lluus\n", (pollParams.pollIntervalTime / 1000));
