@@ -1794,7 +1794,11 @@ void RTL8111::checkLinkStatus()
 void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count)
 {
     UInt64 time, abstime;
+    
+#ifdef __PRIVATE_SPI__
     UInt32 packets;
+#endif /* __PRIVATE_SPI__ */
+
 	UInt16 status;
     UInt16 rxMask;
     
@@ -2321,10 +2325,10 @@ bool RTL8111::initPCIConfigSpace(IOPCIDevice *provider)
         pcieLinkCtl = provider->configRead16(pcieCapOffset + kIOPCIELinkControl);
         DebugLog("Ethernet [RealtekRTL8111]: PCIe link capabilities: 0x%08x, link control: 0x%04x.\n", pcieLinkCap, pcieLinkCtl);
         
-        if (pcieLinkCtl & (kIOPCIELinkCtlASPM | kIOPCIELinkCtlClkReqEn)) {
+        if (pcieLinkCtl & kIOPCIELinkCtlASPM) {
             if (disableASPM) {
                 IOLog("Ethernet [RealtekRTL8111]: Disable PCIe ASPM.\n");
-                provider->configWrite16(pcieCapOffset + kIOPCIELinkControl, (pcieLinkCtl & ~(kIOPCIELinkCtlL0s | kIOPCIELinkCtlL1 | kIOPCIELinkCtlClkReqEn)));
+                provider-> setASPMState(this, 0);
             } else {
                 IOLog("Ethernet [RealtekRTL8111]: Warning: PCIe ASPM enabled.\n");
                 linuxData.aspm = 1;

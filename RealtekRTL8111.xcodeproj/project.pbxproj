@@ -297,7 +297,7 @@
 				INSTALL_OWNER = "$(USER)";
 				MACOSX_DEPLOYMENT_TARGET = 10.11;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.2.1d3;
+				MODULE_VERSION = 2.2.1d4;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = RealtekRTL8111;
 				SDKROOT = macosx;
@@ -323,7 +323,7 @@
 				LLVM_LTO = YES;
 				MACOSX_DEPLOYMENT_TARGET = 10.11;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.2.1d3;
+				MODULE_VERSION = 2.2.1d4;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = RealtekRTL8111;
 				SDKROOT = macosx;
@@ -391,7 +391,7 @@
 				INSTALL_OWNER = "$(USER)";
 				MACOSX_DEPLOYMENT_TARGET = 10.11;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 1.4.0d1;
+				MODULE_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -413,7 +413,7 @@
 				INSTALL_OWNER = "$(USER)";
 				MACOSX_DEPLOYMENT_TARGET = 10.11;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 1.4.0d1;
+				MODULE_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
