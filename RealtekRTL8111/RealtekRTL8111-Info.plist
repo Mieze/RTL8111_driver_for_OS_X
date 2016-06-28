@@ -52,6 +52,8 @@
 			<true/>
 			<key>enableTSO6</key>
 			<true/>
+			<key>hardwareAddress</key>
+			<string></string>
 			<key>intrMitigate</key>
 			<integer>53080</integer>
 			<key>rxPolling</key>
