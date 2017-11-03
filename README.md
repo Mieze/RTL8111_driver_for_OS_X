@@ -94,6 +94,7 @@ Changelog
 Known Issues
 - There are still performance problems with regard to SMB in certain configurations. My tests indicate that Apple's Broadcom driver shows the same behavior with those configurations. Obviously it's a more general problem that is not limited to my driver.
 - WoL refuses to work on some machines.
+- Old systems with 3 and 4 series chipsets exhibit performance issues in recent versions of macOS because there is no optimized power management for these systems in macOS anymore as Apple dropped support for the underlying hardware a long time ago. In case you are affected, please upgrade your hardware or find an alternative solution because I have no plans for a workaround. Sorry, but I don't think that it's worth the effort.
 
 Building from Source
 
