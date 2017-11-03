@@ -49,6 +49,11 @@ The driver has been successfully tested under 10.8.2 - 10.12.6 with serveral ver
 
 Changelog
 
+- Version 2.2.1 (2016-03-12):
+    - Updated underlying linux sources from Realtek to 8.041.00.
+    - Added support for RTL8111H.
+    - Implemented Apple’s polled receive driver model (RXPOLL).
+    - Requires 10.11 or newer. Support for older versions of OS X has been dropped.
 - Version 2.2.0d0 (2016-02-06):
     - Improved media selection and reporting (flow control and EEE).
     - Updated Linux sources to 8.041.000.
