@@ -49,6 +49,9 @@ The driver has been successfully tested under 10.8.2 - 10.12.6 with serveral ver
 
 Changelog
 
+- Version 2.2.2 (2018-01-21)
+    - Force ASPM state to disabled/enabled according to the config parameter setting.
+    - Requires 10.12 or newer.
 - Version 2.2.1 (2016-03-12):
     - Updated underlying linux sources from Realtek to 8.041.00.
     - Added support for RTL8111H.
