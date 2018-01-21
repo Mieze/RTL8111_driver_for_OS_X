@@ -252,6 +252,7 @@ private:
     void txInterrupt();
     
 #ifdef __PRIVATE_SPI__
+    void interruptOccurredPoll(OSObject *client, IOInterruptEventSource *src, int count);
     UInt32 rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
 #else
     void rxInterrupt();

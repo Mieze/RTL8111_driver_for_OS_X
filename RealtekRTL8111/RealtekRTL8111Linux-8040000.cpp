@@ -20829,6 +20829,8 @@ rtl8168_get_bios_setting(struct net_device *dev)
         }
 }
 
+#if DISABLED_CODE
+
 static void
 rtl8168_set_bios_setting(struct net_device *dev)
 {
@@ -20862,8 +20864,6 @@ rtl8168_set_bios_setting(struct net_device *dev)
                 break;
         }
 }
-
-#if DISABLED_CODE
 
 static void
 rtl8168_init_software_variable(struct net_device *dev)
