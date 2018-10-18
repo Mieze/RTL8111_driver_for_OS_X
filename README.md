@@ -99,6 +99,25 @@ Changelog
 - Version 1.2.0 (2014-04-23):
     - Updated underlying linux sources from Realtek to 8.037.00. Improved interrupt mitigate to use a less aggressive value for 10/100 MBit connections.
 
+Troubleshooting
+- Make sure you have followed the installation instructions especially when you have issues with certain domains while the others are working fine.
+- Use the debug version to collect log data when trying to track down problems. The kernel log messages can be found in /var/log/system.log. For Sierra and above use "log show --predicate "processID == 0" --debug" in order to retrieve kernel logs. Include the log data when asking for support or giving feedback. I'm an engineer, not a clairvoyant.
+- Check your BIOS settings. You might want to disable Network Boot and the UEFI Network Stack as these can interfere with the driver.
+- Double check that you have removed any other Realtek kext from your system because they could prevent the driver from working properly.
+- Verify your bootloader configuration, in particular the kernel flags. Avoid using npci=0x2000 or npci=0x3000. 
+- In Terminal run netstat -s in order to display network statistics. Carefully examine the data for any unusual activity like a high number of packets with bad IP header checksums, etc.
+- In case auto-configuration of the link layer connection doesn't work it might be necessary to select the medium manually in System Preferences under Network for the interface.
+- Use Wireshark to create a packet dump in order to collect diagnostic information.
+- Keep in mind that there are many manufacturers of network equipment. Although Ethernet is an IEEE standard different implementations may show different behavior causing incompatibilities. In case you are having trouble try a different switch or a different cable.
+
+FAQ
+- How can I retrieve the kernel logs?
+    - In Terminal type "grep kernel /var/log/system.log".
+- I want to disable Energy Efficient Ethernet (EEE) but I don't know how?
+    - Take a look at the driver's Info.plist file. There you will find an option named <key>enableEEE</key>. Change its value from <true/> to <false/>. Don't forget to recreate the kernel cache after changing the value.
+- WoL from S5 doesn't work with this driver but under Windows it's working. Is this a driver bug?
+    - No it isn't, the driver is working as it should because OS X doesn't support WoL from S5.
+ 
 Known Issues
 - There are still performance problems with regard to SMB in certain configurations. My tests indicate that Apple's Broadcom driver shows the same behavior with those configurations. Obviously it's a more general problem that is not limited to my driver.
 - WoL refuses to work on some machines.
