@@ -126,3 +126,11 @@ Known Issues
 Building from Source
 
 I'm using XCode 8.3.3 for development. You can get a free copy of XCode after becoming a member of the Apple developer program. The free membership is sufficient in order to get access to development tools and documentation.
+
+Support
+
+Please refer to the driver's thread on insanelymac.com
+
+https://www.insanelymac.com/forum/topic/287161-new-driver-for-realtek-rtl8111/
+
+in case you have further questions, need support or want to submit a problem report. As of now, support requests here on Github will be ignored!
