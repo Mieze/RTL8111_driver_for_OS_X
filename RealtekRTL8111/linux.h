@@ -292,4 +292,9 @@ struct pci_dev {
 
 #define BMCR_SPEED10    0x0000
 
-#endif
+/* The additional bytes required by VLAN
+ * (in addition to the Ethernet header)
+ */
+#define VLAN_HLEN    4
+
+ #endif

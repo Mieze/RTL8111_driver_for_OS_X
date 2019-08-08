@@ -18,7 +18,7 @@
  * This driver is based on Realtek's r8168 Linux driver (8.041.0).
  */
 
-#include "RealtekRTL8111Linux-8040000.h"
+#include "RealtekRTL8111Linux-804704.hpp"
 
 #ifdef DEBUG
 #define DebugLog(args...) IOLog(args)
@@ -145,6 +145,7 @@ typedef struct RtlStatData {
 enum
 {
     kIOPCIPMCapability = 2,
+    kIOPCIPMControl = 4,
 };
 
 enum
@@ -169,6 +170,7 @@ enum
     kPowerStateCount
 };
 
+#define kParamName "Driver Parameters"
 #define kEnableEeeName "enableEEE"
 #define kEnableCSO6Name "enableCSO6"
 #define kEnableTSO4Name "enableTSO4"
@@ -178,11 +180,7 @@ enum
 #define kDriverVersionName "Driver_Version"
 #define kNameLenght 64
 
-#ifdef __PRIVATE_SPI__
-
 #define kEnableRxPollName "rxPolling"
-
-#endif /* __PRIVATE_SPI__ */
 
 extern const struct RTLChipInfo rtl_chip_info[];
 
@@ -207,13 +205,9 @@ public:
 	virtual IOReturn enable(IONetworkInterface *netif);
 	virtual IOReturn disable(IONetworkInterface *netif);
 	
-#ifdef __PRIVATE_SPI__
     virtual IOReturn outputStart(IONetworkInterface *interface, IOOptionBits options );
     virtual IOReturn setInputPacketPollingEnable(IONetworkInterface *interface, bool enabled);
     virtual void pollInputPackets(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
-#else
-    virtual UInt32 outputPacket(mbuf_t m, void *param);
-#endif /* __PRIVATE_SPI__ */
 	
 	virtual void getPacketBufferConstraints(IOPacketBufferConstraints *constraints) const;
 	
@@ -251,19 +245,15 @@ private:
     void pciErrorInterrupt();
     void txInterrupt();
     
-#ifdef __PRIVATE_SPI__
     void interruptOccurredPoll(OSObject *client, IOInterruptEventSource *src, int count);
     UInt32 rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
-#else
-    void rxInterrupt();
-#endif /* __PRIVATE_SPI__ */
 
     bool setupDMADescriptors();
     void freeDMADescriptors();
     void txClearDescriptors();
     void checkLinkStatus();
     void updateStatitics();
-    void setLinkUp(UInt8 linkState);
+    void setLinkUp();
     void setLinkDown();
     bool checkForDeadlock();
 
@@ -271,7 +261,7 @@ private:
     bool initRTL8111();
     void enableRTL8111();
     void disableRTL8111();
-    void startRTL8111(UInt16 newIntrMitigate, bool enableInterrupts);
+    void setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts);
     void setOffset79(UInt8 setting);
     void restartRTL8111();
     void setPhyMedium();
@@ -282,7 +272,10 @@ private:
     void initPCIOffset99();
     void setPCI99_180ExitDriverPara();
     void hardwareD3Para();
-
+    void sleepRxEnable();
+    UInt16 getEEEMode();
+    void exitOOB();
+    
     /* Hardware specific methods */
     //void getDescCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
     inline void getChecksumCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums);
@@ -350,6 +343,7 @@ private:
     UInt16 autoneg;
     UInt16 eeeAdv;
     UInt16 eeeCap;
+    UInt16 eeeMode;
     struct pci_dev pciDeviceData;
     struct rtl8168_private linuxData;
     struct IOEthernetAddress currMacAddr;
@@ -359,7 +353,6 @@ private:
     UInt16 intrMask;
     UInt16 intrMitigateValue;
     
-#ifdef __PRIVATE_SPI__
     UInt16 intrMaskRxTx;
     UInt16 intrMaskPoll;
 
@@ -367,9 +360,6 @@ private:
 
     bool rxPoll;
     bool polling;
-#else
-    bool stalled;
-#endif /* __PRIVATE_SPI__ */
 
     /* flags */
     bool isEnabled;
@@ -386,6 +376,8 @@ private:
     bool enableCSO6;
     bool disableASPM;
     
+    UInt8 pciPMCtrlOffset;
+
     /* mbuf_t arrays */
     mbuf_t txMbufArray[kNumTxDesc];
     mbuf_t rxMbufArray[kNumRxDesc];
