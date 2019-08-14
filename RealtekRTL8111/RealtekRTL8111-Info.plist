@@ -58,6 +58,8 @@
 				<integer>53080</integer>
 				<key>rxPolling</key>
 				<true/>
+				<key>fallbackMAC</key>
+				<string></string>
 			</dict>
 		</dict>
 	</dict>

@@ -91,6 +91,7 @@ bool RTL8111::init(OSDictionary *properties)
         enableCSO6 = false;
         disableASPM = false;
         pciPMCtrlOffset = 0;
+        memset(fallBackMacAddr.bytes, 0, kIOEthernetAddressSize);
     }
     
 done:
@@ -875,6 +876,9 @@ IOReturn RTL8111::setWakeOnMagicPacket(bool active)
     if (wolCapable) {
         linuxData.wol_enabled = active ? WOL_ENABLED : WOL_DISABLED;
         wolActive = active;
+        
+        DebugLog("[RealtekRTL8111]: WakeOnMagicPacket %s.\n", active ? "enabled" : "disabled");
+
         result = kIOReturnSuccess;
     }
     
@@ -1033,6 +1037,7 @@ void RTL8111::getParams()
     OSBoolean *csoV6;
     OSBoolean *noASPM;
     OSString *versionString;
+    OSString *fbAddr;
 
     versionString = OSDynamicCast(OSString, getProperty(kDriverVersionName));
 
@@ -1077,6 +1082,22 @@ void RTL8111::getParams()
         
         if (intrMit && !rxPoll)
             intrMitigateValue = intrMit->unsigned16BitValue();
+        
+        fbAddr = OSDynamicCast(OSString, params->getObject(kFallbackName));
+        
+        if (fbAddr) {
+            const char *s = fbAddr->getCStringNoCopy();
+            UInt8 *addr = fallBackMacAddr.bytes;
+            
+            if (fbAddr->getLength()) {
+                sscanf(s, "%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx", &addr[0], &addr[1], &addr[2], &addr[3], &addr[4], &addr[5]);
+                
+                IOLog("[RealtekRTL8111]: Fallback MAC: %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
+                      fallBackMacAddr.bytes[0], fallBackMacAddr.bytes[1],
+                      fallBackMacAddr.bytes[2], fallBackMacAddr.bytes[3],
+                      fallBackMacAddr.bytes[4], fallBackMacAddr.bytes[5]);
+            }
+        }
     } else {
         disableASPM = true;
         linuxData.eeeEnable = 1;

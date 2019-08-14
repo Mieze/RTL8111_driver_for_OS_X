@@ -178,6 +178,7 @@ enum
 #define kIntrMitigateName "intrMitigate"
 #define kDisableASPMName "disableASPM"
 #define kDriverVersionName "Driver_Version"
+#define kFallbackName "fallbackMAC"
 #define kNameLenght 64
 
 #define kEnableRxPollName "rxPolling"
@@ -348,7 +349,8 @@ private:
     struct rtl8168_private linuxData;
     struct IOEthernetAddress currMacAddr;
     struct IOEthernetAddress origMacAddr;
-    
+    struct IOEthernetAddress fallBackMacAddr;
+
     UInt64 lastIntrTime;
     UInt16 intrMask;
     UInt16 intrMitigateValue;

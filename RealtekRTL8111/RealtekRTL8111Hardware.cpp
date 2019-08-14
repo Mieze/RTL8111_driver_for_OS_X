@@ -530,6 +530,10 @@ bool RTL8111::initRTL8111()
             rtl8168_rar_set(tp, (UInt8 *)macAddr);
         }
     }
+    if (!is_valid_ether_addr((UInt8 *) macAddr)) {
+        IOLog("[RealtekRTL8111]: Using fallback MAC.\n");
+        rtl8168_rar_set(tp, fallBackMacAddr.bytes);
+    }
     for (i = 0; i < MAC_ADDR_LEN; i++) {
         currMacAddr.bytes[i] = ReadReg8(MAC0 + i);
         origMacAddr.bytes[i] = currMacAddr.bytes[i]; /* keep the original MAC address */
@@ -1559,7 +1563,9 @@ void RTL8111::setPhyMedium()
     int autoNego = 0;
     int gigaCtrl = 0;
     int force = 0;
-    
+    u16 data;
+    u32 csi_tmp;
+
     if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30 ||
         tp->mcfg == CFG_METHOD_31 || tp->mcfg == CFG_METHOD_32) {
         /* Disable Giga Lite. */
@@ -1608,10 +1614,21 @@ void RTL8111::setPhyMedium()
         
         /* Setup EEE advertisemnet. */
         if (eeeCap) {
-            rtl8168_mdio_write(&linuxData, 0x0D, 0x0007);
-            rtl8168_mdio_write(&linuxData, 0x0E, 0x003C);
-            rtl8168_mdio_write(&linuxData, 0x0D, 0x4007);
-            rtl8168_mdio_write(&linuxData, 0x0E, eeeAdv);
+            if (tp->mcfg >= CFG_METHOD_21) {
+                csi_tmp = rtl8168_eri_read(baseAddr, 0x1B0, 4, ERIAR_ExGMAC);
+                csi_tmp |= BIT_1 | BIT_0;
+                rtl8168_eri_write(baseAddr, 0x1B0, 4, csi_tmp, ERIAR_ExGMAC);
+                rtl8168_mdio_write(tp, 0x1F, 0x0A43);
+                data = rtl8168_mdio_read(tp, 0x11);
+                rtl8168_mdio_write(tp, 0x11, data | BIT_4);
+                rtl8168_mdio_write(tp, 0x1F, 0x0A5D);
+                rtl8168_mdio_write(tp, 0x10, eeeAdv);
+            } else {
+                rtl8168_mdio_write(&linuxData, 0x0D, 0x0007);
+                rtl8168_mdio_write(&linuxData, 0x0E, 0x003C);
+                rtl8168_mdio_write(&linuxData, 0x0D, 0x4007);
+                rtl8168_mdio_write(&linuxData, 0x0E, eeeAdv);
+            }
         }
         rtl8168_mdio_write(tp, 0x1f, 0x0000);
         rtl8168_mdio_write(tp, MII_ADVERTISE, autoNego);
