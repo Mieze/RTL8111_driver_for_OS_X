@@ -1951,6 +1951,9 @@ int rtl8168_is_ups_resume(struct net_device *dev);
 void rtl8168_clear_ups_resume_bit(struct net_device *dev);
 void rtl8168_wait_phy_ups_resume(struct net_device *dev, u16 PhyState);
 
+int rtl8168_enable_EEE(struct rtl8168_private *tp);
+int rtl8168_disable_EEE(struct rtl8168_private *tp);
+
 //EEPROM opcodes
 #define RTL_EEPROM_READ_OPCODE      06
 #define RTL_EEPROM_WRITE_OPCODE     05

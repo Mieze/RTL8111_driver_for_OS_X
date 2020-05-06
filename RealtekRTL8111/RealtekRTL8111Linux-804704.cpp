@@ -243,7 +243,7 @@ const struct RTLChipInfo rtl_chip_info[] = {
 
         _R("RTL8168G/8111G",
         CFG_METHOD_21,
-        RxCfg_128_int_en | RxEarly_off_V2 | Rx_Single_fetch_V2 | (RX_DMA_BURST << RxCfgDMAShift),
+        RxCfg_128_int_en | RxEarly_off_V2 | /*Rx_Single_fetch_V2 |*/ (RX_DMA_BURST << RxCfgDMAShift),
         0xff7e5880,
         Jumbo_Frame_9k),
 
@@ -5688,7 +5688,7 @@ static int _kc_ethtool_op_set_sg(struct net_device *dev, u32 data)
 
 #endif  /* DISABLED_CODE */
 
-static int rtl8168_enable_EEE(struct rtl8168_private *tp)
+int rtl8168_enable_EEE(struct rtl8168_private *tp)
 {
         void __iomem *ioaddr = tp->mmio_addr;
         int ret;
@@ -5950,7 +5950,7 @@ static int rtl8168_enable_EEE(struct rtl8168_private *tp)
         return ret;
 }
 
-static int rtl8168_disable_EEE(struct rtl8168_private *tp)
+int rtl8168_disable_EEE(struct rtl8168_private *tp)
 {
         void __iomem *ioaddr = tp->mmio_addr;
         int ret;

@@ -72,7 +72,7 @@ bool RTL8111::init(OSDictionary *properties)
         duplex = DUPLEX_FULL;
         autoneg = AUTONEG_ENABLE;
         flowCtl = kFlowControlOff;
-        eeeAdv = 0;
+        linuxData.eee_adv_t = 0;
         eeeCap = 0;
         linuxData.aspm = 0;
         linuxData.s0_magic_packet = 0;
@@ -930,14 +930,14 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
     
     if (medium) {
         flowCtl = kFlowControlOff;
-        eeeAdv = 0;
+        linuxData.eee_adv_t = 0;
         
         switch (medium->getIndex()) {
             case MEDIUM_INDEX_AUTO:
                 autoneg = AUTONEG_ENABLE;
-                speed = SPEED_1000;
+                speed = 0;
                 duplex = DUPLEX_FULL;
-                eeeAdv = eeeCap;
+                linuxData.eee_adv_t = eeeCap;
                 break;
                 
             case MEDIUM_INDEX_10HD:
@@ -988,7 +988,7 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 autoneg = AUTONEG_ENABLE;
                 speed = SPEED_100;
                 duplex = DUPLEX_FULL;
-                eeeAdv = eeeCap;
+                linuxData.eee_adv_t = eeeCap;
                 break;
                 
             case MEDIUM_INDEX_100FDFCEEE:
@@ -996,14 +996,14 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 speed = SPEED_100;
                 duplex = DUPLEX_FULL;
                 flowCtl = kFlowControlOn;
-                eeeAdv = eeeCap;
+                linuxData.eee_adv_t = eeeCap;
                 break;
                 
             case MEDIUM_INDEX_1000FDEEE:
                 autoneg = AUTONEG_ENABLE;
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
-                eeeAdv = eeeCap;
+                linuxData.eee_adv_t = eeeCap;
                 break;
                 
             case MEDIUM_INDEX_1000FDFCEEE:
@@ -1011,7 +1011,7 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
                 flowCtl = kFlowControlOn;
-                eeeAdv = eeeCap;
+                linuxData.eee_adv_t = eeeCap;
                 break;
         }
         setPhyMedium();

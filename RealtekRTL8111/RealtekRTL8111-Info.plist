@@ -17,17 +17,36 @@
 	<key>CFBundlePackageType</key>
 	<string>KEXT</string>
 	<key>CFBundleShortVersionString</key>
-	<string>$MODULE_VERSION</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>$MODULE_VERSION</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>IOKitPersonalities</key>
 	<dict>
 		<key>RTL8111 PCIe Adapter</key>
 		<dict>
 			<key>CFBundleIdentifier</key>
 			<string>com.insanelymac.${PRODUCT_NAME:rfc1034identifier}</string>
+			<key>Driver Parameters</key>
+			<dict>
+				<key>disableASPM</key>
+				<true/>
+				<key>enableCSO6</key>
+				<true/>
+				<key>enableEEE</key>
+				<true/>
+				<key>enableTSO4</key>
+				<true/>
+				<key>enableTSO6</key>
+				<true/>
+				<key>fallbackMAC</key>
+				<string></string>
+				<key>intrMitigate</key>
+				<integer>53080</integer>
+				<key>rxPolling</key>
+				<true/>
+			</dict>
 			<key>Driver_Version</key>
 			<string>$MODULE_VERSION</string>
 			<key>IOClass</key>
@@ -42,25 +61,6 @@
 			<string>RTL8111</string>
 			<key>Vendor</key>
 			<string>Realtek</string>
-			<key>Driver Parameters</key>
-			<dict>
-				<key>disableASPM</key>
-				<true/>
-				<key>enableCSO6</key>
-				<true/>
-				<key>enableTSO4</key>
-				<true/>
-				<key>enableTSO6</key>
-				<true/>
-				<key>enableEEE</key>
-				<true/>
-				<key>intrMitigate</key>
-				<integer>53080</integer>
-				<key>rxPolling</key>
-				<true/>
-				<key>fallbackMAC</key>
-				<string></string>
-			</dict>
 		</dict>
 	</dict>
 	<key>NSHumanReadableCopyright</key>

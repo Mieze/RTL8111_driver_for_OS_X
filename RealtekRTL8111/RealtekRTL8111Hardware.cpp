@@ -158,7 +158,7 @@ bool RTL8111::initRTL8111()
     
     /* Setup EEE support. */
     if ((tp->mcfg >= CFG_METHOD_14) && (linuxData.eeeEnable != 0)) {
-        eeeAdv = eeeCap = (kEEEMode100 | kEEEMode1000);
+        linuxData.eee_adv_t = eeeCap = (kEEEMode100 | kEEEMode1000);
     }
     /* Select the chip revision. */
     revisionC = ((tp->chipset == CFG_METHOD_1) || (tp->chipset == CFG_METHOD_2) || (tp->chipset == CFG_METHOD_3)) ? false : true;
@@ -1563,14 +1563,17 @@ void RTL8111::setPhyMedium()
     int autoNego = 0;
     int gigaCtrl = 0;
     int force = 0;
-    u16 data;
-    u32 csi_tmp;
+    int use_default = 0;
 
     if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30 ||
         tp->mcfg == CFG_METHOD_31 || tp->mcfg == CFG_METHOD_32) {
         /* Disable Giga Lite. */
         rtl8168_mdio_write(tp, 0x1F, 0x0A42);
         rtl8168_clear_eth_phy_bit(tp, 0x14, BIT_9);
+        
+        if (tp->mcfg == CFG_METHOD_31 || tp->mcfg == CFG_METHOD_32)
+                rtl8168_clear_eth_phy_bit(tp, 0x14, BIT_7);
+
         rtl8168_mdio_write(tp, 0x1F, 0x0A40);
         rtl8168_mdio_write(tp, 0x1F, 0x0000);
     }
@@ -1578,6 +1581,7 @@ void RTL8111::setPhyMedium()
         speed = SPEED_1000;
         duplex = DUPLEX_FULL;
         autoneg = AUTONEG_ENABLE;
+        use_default = 1;
     }
     autoNego = rtl8168_mdio_read(tp, MII_ADVERTISE);
     autoNego &= ~(ADVERTISE_10HALF | ADVERTISE_10FULL | ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM);
@@ -1585,28 +1589,45 @@ void RTL8111::setPhyMedium()
     gigaCtrl = rtl8168_mdio_read(tp, MII_CTRL1000);
     gigaCtrl &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
     
-    if ((autoneg == AUTONEG_ENABLE) || (speed == SPEED_1000)) {
-        /* n-way force */
-        if ((speed == SPEED_10) && (duplex == DUPLEX_HALF)) {
-            autoNego |= ADVERTISE_10HALF;
-        } else if ((speed == SPEED_10) && (duplex == DUPLEX_FULL)) {
-            autoNego |= ADVERTISE_10HALF |
-            ADVERTISE_10FULL;
-        } else if ((speed == SPEED_100) && (duplex == DUPLEX_HALF)) {
-            autoNego |= ADVERTISE_100HALF |
-            ADVERTISE_10HALF |
-            ADVERTISE_10FULL;
-        } else if ((speed == SPEED_100) && (duplex == DUPLEX_FULL)) {
-            autoNego |= ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_10HALF | ADVERTISE_10FULL;
-        } else if (speed == SPEED_1000) {
-            gigaCtrl |= ADVERTISE_1000HALF | ADVERTISE_1000FULL;
-            
-            autoNego |= ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_10HALF | ADVERTISE_10FULL;
+    if (tp->HwHasWrRamCodeToMicroP == TRUE) {
+        if ((tp->eee_enabled) && (linuxData.eee_adv_t != 0)) {
+            rtl8168_enable_EEE(tp);
+            DebugLog("Enable EEE support.\n");
+        } else {
+            rtl8168_disable_EEE(tp);
+            DebugLog("Disable EEE support.\n");
         }
-        autoneg = AUTONEG_ENABLE;
+    }
+    if (autoneg == AUTONEG_ENABLE) {
+        /* n-way force */
+        if (speed == SPEED_1000) {
+            if (use_default) {
+                /* The default medium has been selected. */
+                gigaCtrl |= ADVERTISE_1000HALF | ADVERTISE_1000FULL;
+                autoNego |= ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_10HALF | ADVERTISE_10FULL;
+            } else {
+                if (duplex == DUPLEX_HALF) {
+                    gigaCtrl |= ADVERTISE_1000HALF;
+                } else {
+                    gigaCtrl |= ADVERTISE_1000FULL;
+                }
+            }
+        } else if (speed == SPEED_100) {
+            if (duplex == DUPLEX_HALF) {
+                autoNego |= ADVERTISE_100HALF;
+            } else {
+                autoNego |=  ADVERTISE_100FULL;
+            }
+        } else { /* speed == SPEED_10 */
+            if (duplex == DUPLEX_HALF) {
+                autoNego |= ADVERTISE_10HALF;
+            } else {
+                autoNego |= ADVERTISE_10FULL;
+            }
+        }
         
         /* Set flow control support. */
-        if (flowCtl)
+        if (flowCtl == kFlowControlOn)
             autoNego |= ADVERTISE_PAUSE_CAP|ADVERTISE_PAUSE_ASYM;
         
         tp->phy_auto_nego_reg = autoNego;
@@ -1614,23 +1635,14 @@ void RTL8111::setPhyMedium()
         
         /* Setup EEE advertisemnet. */
         if (eeeCap) {
-            if (tp->mcfg >= CFG_METHOD_21) {
-                csi_tmp = rtl8168_eri_read(baseAddr, 0x1B0, 4, ERIAR_ExGMAC);
-                csi_tmp |= BIT_1 | BIT_0;
-                rtl8168_eri_write(baseAddr, 0x1B0, 4, csi_tmp, ERIAR_ExGMAC);
-                rtl8168_mdio_write(tp, 0x1F, 0x0A43);
-                data = rtl8168_mdio_read(tp, 0x11);
-                rtl8168_mdio_write(tp, 0x11, data | BIT_4);
-                rtl8168_mdio_write(tp, 0x1F, 0x0A5D);
-                rtl8168_mdio_write(tp, 0x10, eeeAdv);
-            } else {
+            if ((tp->mcfg >= CFG_METHOD_14) && (tp->mcfg < CFG_METHOD_21)) {
                 rtl8168_mdio_write(&linuxData, 0x0D, 0x0007);
                 rtl8168_mdio_write(&linuxData, 0x0E, 0x003C);
                 rtl8168_mdio_write(&linuxData, 0x0D, 0x4007);
-                rtl8168_mdio_write(&linuxData, 0x0E, eeeAdv);
+                rtl8168_mdio_write(&linuxData, 0x0E, linuxData.eee_adv_t);
+                rtl8168_mdio_write(tp, 0x1F, 0x0000);
             }
         }
-        rtl8168_mdio_write(tp, 0x1f, 0x0000);
         rtl8168_mdio_write(tp, MII_ADVERTISE, autoNego);
         rtl8168_mdio_write(tp, MII_CTRL1000, gigaCtrl);
         rtl8168_mdio_write(tp, MII_BMCR, BMCR_RESET | BMCR_ANENABLE | BMCR_ANRESTART);
@@ -1653,7 +1665,6 @@ void RTL8111::setPhyMedium()
     tp->autoneg = autoneg;
     tp->speed = speed;
     tp->duplex = duplex;
-    tp->eee_adv_t = eeeAdv;
     
     if (tp->mcfg == CFG_METHOD_11)
         rtl8168dp_10mbps_gphy_para(&linuxData);
@@ -2057,38 +2068,35 @@ UInt16 RTL8111::getEEEMode()
 {
     struct rtl8168_private *tp = &linuxData;
     UInt16 eee = 0;
-    UInt16 val;
-    
+    UInt16 sup, adv, lpa, ena;
+
     if (eeeCap) {
         if (tp->mcfg >= CFG_METHOD_27) {
             rtl8168_mdio_write(tp, 0x1F, 0x0A5C);
-            val = rtl8168_mdio_read(tp, 0x12);
-            eee = val;
-            DebugLog("[RealtekRTL8111]: EEE supported=%u\n", val);
+            sup = rtl8168_mdio_read(tp, 0x12);
+            DebugLog("EEE supported: %u\n", sup);
 
             rtl8168_mdio_write(tp, 0x1F, 0x0A5D);
-            val = rtl8168_mdio_read(tp, 0x10);
-            eee &= val;
-            DebugLog("[RealtekRTL8111]: EEE advertised=%u\n", val);
+            adv = rtl8168_mdio_read(tp, 0x10);
+            DebugLog("EEE advertised: %u\n", adv);
 
-            val = rtl8168_mdio_read(tp, 0x11);
-            eee &= val;
-            DebugLog("[RealtekRTL8111]: EEE link partner=%u\n", val);
+            lpa = rtl8168_mdio_read(tp, 0x11);
+            DebugLog("EEE link partner: %u\n", lpa);
 
-            val = rtl8168_eri_read(baseAddr, 0x1B0, 2, ERIAR_ExGMAC);
-            val &= BIT_1 | BIT_0;
-            DebugLog("[RealtekRTL8111]: EEE active=%u\n", val);
+            ena = rtl8168_eri_read(baseAddr, 0x1B0, 2, ERIAR_ExGMAC);
+            ena &= BIT_1 | BIT_0;
+            DebugLog("EEE enabled: %u\n", ena);
 
             rtl8168_mdio_write(tp, 0x1F, 0x0000);
             
-            eee = (val) ? eee : 0;
+            eee = (sup & adv & lpa);
         } else {
             rtl8168_mdio_write(&linuxData, 0x0D, 0x0007);
             rtl8168_mdio_write(&linuxData, 0x0E, 0x003D);
             rtl8168_mdio_write(&linuxData, 0x0D, 0x4007);
-            eee = (rtl8168_mdio_read(&linuxData, 0x0E) & eeeAdv);
+            eee = (rtl8168_mdio_read(&linuxData, 0x0E) & linuxData.eee_adv_t);
+            rtl8168_mdio_write(tp, 0x0D, 0x0000);
         }
-        //DebugLog("[RealtekRTL8111]: LPA=%u\n", eee);
     }
     return eee;
 }

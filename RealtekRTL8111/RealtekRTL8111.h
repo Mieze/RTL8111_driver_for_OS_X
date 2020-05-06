@@ -342,7 +342,6 @@ private:
     UInt32 duplex;
     UInt16 flowCtl;
     UInt16 autoneg;
-    UInt16 eeeAdv;
     UInt16 eeeCap;
     UInt16 eeeMode;
     struct pci_dev pciDeviceData;
