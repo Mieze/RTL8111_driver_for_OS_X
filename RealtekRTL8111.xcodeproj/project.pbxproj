@@ -251,7 +251,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
 				MARKETING_VERSION = $MODULE_VERSION;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.3.0d10;
+				MODULE_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = RealtekRTL8111;
 				SDKROOT = macosx;
@@ -279,7 +279,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
 				MARKETING_VERSION = $MODULE_VERSION;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.3.0d10;
+				MODULE_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = RealtekRTL8111;
 				SDKROOT = macosx;
