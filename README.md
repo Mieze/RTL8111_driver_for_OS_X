@@ -45,10 +45,23 @@ Before you install the driver you have to remove any installed driver for RTL811
 
 Current status
 
-The driver has been successfully tested under 10.8.2 - 10.12.6 with serveral versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are 25 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
+The driver has been successfully tested under 10.8.2 - 10.15.6 with serveral versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are more than 30 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
+
+Support
+
+Please refer to the driver's thread on insanelymac.com
+
+https://www.insanelymac.com/forum/topic/287161-new-driver-for-realtek-rtl8111/
+
+in case you have further questions, need support or want to submit a problem report. As of now, support requests here on Github will be ignored!
 
 Changelog
 
+- Version 2.3.0 (2020-08-14)
+    - Reworked medium section and EEE support to resolve problems with connection establishment and stability.
+    - Added option to supply a fallback MAC.
+    - Updated Linux sources to 8.047.04 and added support for new family members
+    - Requires 10.14 or newer.
 - Version 2.2.2 (2018-01-21)
     - Force ASPM state to disabled/enabled according to the config parameter setting.
     - Requires 10.12 or newer.
@@ -110,6 +123,14 @@ Troubleshooting
 - Use Wireshark to create a packet dump in order to collect diagnostic information.
 - Keep in mind that there are many manufacturers of network equipment. Although Ethernet is an IEEE standard different implementations may show different behavior causing incompatibilities. In case you are having trouble try a different switch or a different cable.
 
+Help - I'm getting kernel panics!
+Well, before you start complaining about bugs after you upgraded macOS and ask me to publish a driver update, you should first try to resolve the issue on your own by cleaning the system caches.
+As the driver uses macOS's private network driver interface, which is supposed to be used by Apple provided drivers only, you might run into problems after an OS update because the linker may fail to recognize that IONetworking.kext has been updated and that the driver needs to be linked against the new version (Apple provided drivers avoid this problem because they are always updated together with IONetworking.kext). As a result, the linking process produces garbage and the driver may call arbitrary code when trying to call functions from IONetworking.kext. This usually results in unpredicted behavior or a kernel panic. In order to recover from such a situation, you should clean the System Caches forcing the linker to recreate it's caches:
+    1. Delete all the files in /System/Library/Caches and it's subdirectories but leave the directories and the symbolic links intact. This is very important!
+    2. Reboot.
+    3. Recreate the kernel cache.
+    4. Reboot again.
+    
 FAQ
 - How can I retrieve the kernel logs?
     - In Terminal type "grep kernel /var/log/system.log".
@@ -125,12 +146,5 @@ Known Issues
 
 Building from Source
 
-I'm using XCode 8.3.3 for development. You can get a free copy of XCode after becoming a member of the Apple developer program. The free membership is sufficient in order to get access to development tools and documentation.
+I'm always using the latest version of XCode for development. You can get a free copy of XCode after becoming a member of the Apple develop﻿er program. The free membership is sufficient in order to get access to development tools and documentation.
 
-Support
-
-Please refer to the driver's thread on insanelymac.com
-
-https://www.insanelymac.com/forum/topic/287161-new-driver-for-realtek-rtl8111/
-
-in case you have further questions, need support or want to submit a problem report. As of now, support requests here on Github will be ignored!
