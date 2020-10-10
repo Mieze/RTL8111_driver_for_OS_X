@@ -55,7 +55,7 @@
  * This driver is modified from r8169.c in Linux kernel 2.6.18
  */
 
-#include "RealtekRTL8111.h"
+#include "RealtekRTL8111.hpp"
 
 #if DISABLED_CODE
 

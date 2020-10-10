@@ -19,7 +19,7 @@
  */
 
 
-#include "RealtekRTL8111.h"
+#include "RealtekRTL8111.hpp"
 
 #pragma mark --- function prototypes ---
 
@@ -58,6 +58,9 @@ bool RTL8111::init(OSDictionary *properties)
         statBufDesc = NULL;
         statPhyAddr = NULL;
         statData = NULL;
+        rxPacketHead = NULL;
+        rxPacketTail = NULL;
+        rxPacketSize = 0;
         isEnabled = false;
         promiscusMode = false;
         multicastMode = false;
@@ -186,22 +189,30 @@ bool RTL8111::start(IOService *provider)
     }
     commandGate->retain();
     
+    if (!setupDMADescriptors()) {
+        IOLog("Error allocating DMA descriptors.\n");
+        goto error3;
+    }
+
     if (!initEventSources(provider)) {
         IOLog("[RealtekRTL8111]: initEventSources() failed.\n");
-        goto error3;
+        goto error4;
     }
     
     result = attachInterface(reinterpret_cast<IONetworkInterface**>(&netif));
 
     if (!result) {
         IOLog("[RealtekRTL8111]: attachInterface() failed.\n");
-        goto error3;
+        goto error4;
     }
     pciDevice->close(this);
     result = true;
     
 done:
     return result;
+
+error4:
+    freeDMADescriptors();
 
 error3:
     RELEASE(commandGate);
@@ -331,10 +342,6 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     }
     pciDevice->open(this);
     
-    if (!setupDMADescriptors()) {
-        IOLog("[RealtekRTL8111]: Error allocating DMA descriptors.\n");
-        goto done;
-    }
     selectedMedium = getSelectedMedium();
     
     if (!selectedMedium) {
@@ -347,6 +354,8 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
     /* We have to enable the interrupt because we are using a msi interrupt. */
     interruptSource->enable();
 
+    rxPacketHead = rxPacketTail = NULL;
+    rxPacketSize = 0;
     txDescDoneCount = txDescDoneLast = 0;
     deadlockWarn = 0;
     needsUpdate = false;
@@ -388,13 +397,11 @@ IOReturn RTL8111::disable(IONetworkInterface *netif)
 
     disableRTL8111();
     
-    txClearDescriptors();
+    clearDescriptors();
     
     if (pciDevice && pciDevice->isOpen())
         pciDevice->close(this);
-    
-    freeDMADescriptors();
-    
+        
     DebugLog("disable() <===\n");
     
 done:
@@ -614,8 +621,8 @@ void RTL8111::getPacketBufferConstraints(IOPacketBufferConstraints *constraints)
 {
     DebugLog("getPacketBufferConstraints() ===>\n");
 
-	constraints->alignStart = kIOPacketBufferAlign8;
-	constraints->alignLength = kIOPacketBufferAlign8;
+	constraints->alignStart = kIOPacketBufferAlign1;
+	constraints->alignLength = kIOPacketBufferAlign1;
     
     DebugLog("getPacketBufferConstraints() <===\n");
 }
@@ -1021,6 +1028,71 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
     DebugLog("selectMedium() <===\n");
     
 done:
+    return result;
+}
+
+IOReturn RTL8111::getMaxPacketSize(UInt32 * maxSize) const
+{
+    IOReturn result = kIOReturnSuccess;
+
+    DebugLog("getMaxPacketSize() ===>\n");
+    
+    if (linuxData.mcfg >= kJumboFrameSupport)
+        *maxSize = kMaxPacketSize;
+    else
+        result = super::getMaxPacketSize(maxSize);
+    
+    DebugLog("getMaxPacketSize() <===\n");
+    
+    return result;
+}
+
+IOReturn RTL8111::setMaxPacketSize(UInt32 maxSize)
+{
+    IOReturn result = kIOReturnError;
+    ifnet_t ifnet = netif->getIfnet();
+    ifnet_offload_t offload;
+    UInt32 mask = 0;
+    
+    DebugLog("setMaxPacketSize() ===>\n");
+    
+    if (linuxData.mcfg >= kJumboFrameSupport) {
+        if (maxSize <= linuxData.max_jumbo_frame_size) {
+            mtu = maxSize - (ETH_HLEN + ETH_FCS_LEN);
+            
+            DebugLog("maxSize: %u, mtu: %u\n", maxSize, mtu);
+            
+            if (enableTSO4)
+                mask |= IFNET_TSO_IPV4;
+            
+            if (enableTSO6)
+                mask |= IFNET_TSO_IPV6;
+
+            offload = ifnet_offload(ifnet);
+            
+            if (mtu > MSS_MAX) {
+                offload &= ~mask;
+                DebugLog("Disable hardware offload features: %x!\n", mask);
+            } else {
+                offload |= mask;
+                DebugLog("Enable hardware offload features: %x!\n", mask);
+            }
+            if (ifnet_set_offload(ifnet, offload))
+                IOLog("Error setting hardware offload: %x!\n", offload);
+            
+            /* Force reinitialization. */
+            setLinkDown();
+            timerSource->cancelTimeout();
+            //updateStatistics(&adapterData);
+            restartRTL8111();
+            
+            result = kIOReturnSuccess;
+        }
+    } else {
+        result = super::setMaxPacketSize(maxSize);
+    }
+    DebugLog("setMaxPacketSize() <===\n");
+    
     return result;
 }
 
@@ -1439,18 +1511,15 @@ void RTL8111::freeDMADescriptors()
     }
 }
 
-void RTL8111::txClearDescriptors()
+void RTL8111::clearDescriptors()
 {
     mbuf_t m;
     UInt32 lastIndex = kTxLastDesc;
+    UInt32 opts1;
     UInt32 i;
     
-    DebugLog("txClearDescriptors() ===>\n");
+    DebugLog("clearDescriptors() ===>\n");
     
-    if (txNext2FreeMbuf) {
-        freePacket(txNext2FreeMbuf);
-        txNext2FreeMbuf = NULL;
-    }
     for (i = 0; i < kNumTxDesc; i++) {
         txDescArray[i].opts1 = OSSwapHostToLittleInt32((i != lastIndex) ? 0 : RingEnd);
         m = txMbufArray[i];
@@ -1460,10 +1529,35 @@ void RTL8111::txClearDescriptors()
             txMbufArray[i] = NULL;
         }
     }
-    txDirtyDescIndex = txNextDescIndex = 0;    
+    txDirtyDescIndex = txNextDescIndex = 0;
     txNumFreeDesc = kNumTxDesc;
+        
+    for (i = 0; i < kNumRxDesc; i++) {
+        opts1 = (UInt32)kRxBufferPktSize;
+        opts1 |= (i == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
+        rxDescArray[i].opts1 = OSSwapHostToLittleInt32(opts1);
+        rxDescArray[i].opts2 = 0;
+    }
+    rxNextDescIndex = 0;
+    deadlockWarn = 0;
     
-    DebugLog("txClearDescriptors() <===\n");
+    /* Free packet fragments which haven't been upstreamed yet.  */
+    discardPacketFragment();
+    
+    DebugLog("clearDescriptors() <===\n");
+}
+
+void RTL8111::discardPacketFragment()
+{
+    /*
+     * In case there is a packet fragment which hasn't been enqueued yet
+     * we have to free it in order to prevent a memory leak.
+     */
+    if (rxPacketHead)
+        freePacket(rxPacketHead);
+    
+    rxPacketHead = rxPacketTail = NULL;
+    rxPacketSize = 0;
 }
 
 #pragma mark --- common interrupt methods ---
@@ -1540,26 +1634,16 @@ UInt32 RTL8111::rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IO
     UInt32 descStatus1, descStatus2;
     UInt32 pktSize;
     UInt32 goodPkts = 0;
-    UInt16 vlanTag;
     bool replaced;
     
     while (!((descStatus1 = OSSwapLittleToHostInt32(desc->opts1)) & DescOwn) && (goodPkts < maxCount)) {
         opts1 = (rxNextDescIndex == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
         opts2 = 0;
         addr = 0;
-        
-        /* As we don't support jumbo frames we consider fragmented packets as errors. */
-        if ((descStatus1 & (FirstFrag|LastFrag)) != (FirstFrag|LastFrag)) {
-            DebugLog("[RealtekRTL8111]: Fragmented packet.\n");
-            etherStats->dot3StatsEntry.frameTooLongs++;
-            opts1 |= kRxBufferPktSize;
-            goto nextDesc;
-        }
-        
+
         descStatus2 = OSSwapLittleToHostInt32(desc->opts2);
         pktSize = (descStatus1 & 0x1fff) - kIOEthernetCRCSize;
         bufPkt = rxMbufArray[rxNextDescIndex];
-        vlanTag = (descStatus2 & RxVlanTag) ? OSSwapInt16(descStatus2 & 0xffff) : 0;
         //DebugLog("rxInterrupt(): descStatus1=0x%x, descStatus2=0x%x, pktSize=%u\n", descStatus1, descStatus2, pktSize);
         
         newPkt = replaceOrCopyPacket(&bufPkt, pktSize, &replaced);
@@ -1587,17 +1671,53 @@ UInt32 RTL8111::rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IO
         } else {
             opts1 |= kRxBufferPktSize;
         }
-        getChecksumResult(newPkt, descStatus1, descStatus2);
-        
-        /* Also get the VLAN tag if there is any. */
-        if (vlanTag)
-            setVlanTag(newPkt, vlanTag);
-        
-        mbuf_pkthdr_setlen(newPkt, pktSize);
+        /* Set the length of the buffer. */
         mbuf_setlen(newPkt, pktSize);
-        interface->enqueueInputPacket(newPkt, pollQueue);
-        goodPkts++;
-        
+
+        if (descStatus1 & LastFrag) {
+            if (rxPacketHead) {
+                /* This is the last buffer of a jumbo frame. */
+                mbuf_setflags_mask(newPkt, 0, MBUF_PKTHDR);
+                mbuf_setnext(rxPacketTail, newPkt);
+                
+                rxPacketSize += pktSize;
+                rxPacketTail = newPkt;
+            } else {
+                /*
+                 * We've got a complete packet in one buffer.
+                 * It can be enqueued directly.
+                 */
+                rxPacketHead = newPkt;
+                rxPacketSize = pktSize;
+            }
+            getChecksumResult(newPkt, descStatus1, descStatus2);
+            
+            /* Also get the VLAN tag if there is any. */
+            if (descStatus2 & RxVlanTag)
+                setVlanTag(rxPacketHead, OSSwapInt16(descStatus2 & 0xffff));
+            
+            mbuf_pkthdr_setlen(rxPacketHead, rxPacketSize);
+            interface->enqueueInputPacket(rxPacketHead, pollQueue);
+            
+            rxPacketHead = rxPacketTail = NULL;
+            rxPacketSize = 0;
+            
+            goodPkts++;
+        } else {
+            if (rxPacketHead) {
+                /* We are in the middle of a jumbo frame. */
+                mbuf_setflags_mask(newPkt, 0, MBUF_PKTHDR);
+                mbuf_setnext(rxPacketTail, newPkt);
+                
+                rxPacketTail = newPkt;
+                rxPacketSize += pktSize;
+            } else {
+                /* This is the first buffer of a jumbo frame. */
+                rxPacketHead = rxPacketTail = newPkt;
+                rxPacketSize = pktSize;
+            }
+        }
+
         /* Finally update the descriptor and get the next one to examine. */
     nextDesc:
         if (addr)
@@ -2249,7 +2369,7 @@ void RTL8111::setLinkDown()
     rtl8168_nic_reset(&linuxData);
 
     /* Cleanup descriptor ring. */
-    txClearDescriptors();
+    clearDescriptors();
     
     setPhyMedium();
     

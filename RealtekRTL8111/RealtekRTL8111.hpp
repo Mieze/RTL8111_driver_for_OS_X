@@ -118,9 +118,12 @@ typedef struct RtlStatData {
 #define kRxDescSize    (kNumRxDesc*sizeof(struct RtlDmaDesc))
 
 /* This is the receive buffer size (must be large enough to hold a packet). */
-#define kRxBufferPktSize    2000
+#define kRxBufferPktSize    2048
 #define kRxNumSpareMbufs    100
 #define kMCFilterLimit  32
+#define kMaxMtu 9000
+#define kMaxPacketSize (kMaxMtu + ETH_HLEN + ETH_FCS_LEN)
+#define kJumboFrameSupport CFG_METHOD_16
 
 /* statitics timer period in ms. */
 #define kTimeoutMS 1000
@@ -182,6 +185,7 @@ enum
 #define kNameLenght 64
 
 #define kEnableRxPollName "rxPolling"
+#define kChipsetName "Chipset"
 
 extern const struct RTLChipInfo rtl_chip_info[];
 
@@ -192,49 +196,51 @@ class RTL8111 : public super
 	
 public:
 	/* IOService (or its superclass) methods. */
-	virtual bool start(IOService *provider);
-	virtual void stop(IOService *provider);
-	virtual bool init(OSDictionary *properties);
-	virtual void free();
+	virtual bool start(IOService *provider) override;
+	virtual void stop(IOService *provider) override;
+	virtual bool init(OSDictionary *properties) override;
+	virtual void free() override;
 	
 	/* Power Management Support */
-	virtual IOReturn registerWithPolicyMaker(IOService *policyMaker);
-    virtual IOReturn setPowerState(unsigned long powerStateOrdinal, IOService *policyMaker );
-	virtual void systemWillShutdown(IOOptionBits specifier);
+	virtual IOReturn registerWithPolicyMaker(IOService *policyMaker) override;
+    virtual IOReturn setPowerState(unsigned long powerStateOrdinal, IOService *policyMaker ) override;
+	virtual void systemWillShutdown(IOOptionBits specifier) override;
 
 	/* IONetworkController methods. */	
-	virtual IOReturn enable(IONetworkInterface *netif);
-	virtual IOReturn disable(IONetworkInterface *netif);
+	virtual IOReturn enable(IONetworkInterface *netif) override;
+	virtual IOReturn disable(IONetworkInterface *netif) override;
 	
-    virtual IOReturn outputStart(IONetworkInterface *interface, IOOptionBits options );
-    virtual IOReturn setInputPacketPollingEnable(IONetworkInterface *interface, bool enabled);
-    virtual void pollInputPackets(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
+    virtual IOReturn outputStart(IONetworkInterface *interface, IOOptionBits options) override;
+    virtual IOReturn setInputPacketPollingEnable(IONetworkInterface *interface, bool enabled) override;
+    virtual void pollInputPackets(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context) override;
 	
-	virtual void getPacketBufferConstraints(IOPacketBufferConstraints *constraints) const;
+	virtual void getPacketBufferConstraints(IOPacketBufferConstraints *constraints) const override;
 	
-	virtual IOOutputQueue* createOutputQueue();
+	virtual IOOutputQueue* createOutputQueue() override;
 	
-	virtual const OSString* newVendorString() const;
-	virtual const OSString* newModelString() const;
+	virtual const OSString* newVendorString() const override;
+	virtual const OSString* newModelString() const override;
 	
-	virtual IOReturn selectMedium(const IONetworkMedium *medium);
-	virtual bool configureInterface(IONetworkInterface *interface);
+	virtual IOReturn selectMedium(const IONetworkMedium *medium) override;
+	virtual bool configureInterface(IONetworkInterface *interface) override;
 	
-	virtual bool createWorkLoop();
-	virtual IOWorkLoop* getWorkLoop() const;
+	virtual bool createWorkLoop() override;
+	virtual IOWorkLoop* getWorkLoop() const override;
 	
 	/* Methods inherited from IOEthernetController. */	
-	virtual IOReturn getHardwareAddress(IOEthernetAddress *addr);
-	virtual IOReturn setHardwareAddress(const IOEthernetAddress *addr);
-	virtual IOReturn setPromiscuousMode(bool active);
-	virtual IOReturn setMulticastMode(bool active);
-	virtual IOReturn setMulticastList(IOEthernetAddress *addrs, UInt32 count);
-	virtual IOReturn getChecksumSupport(UInt32 *checksumMask, UInt32 checksumFamily, bool isOutput);
-    virtual IOReturn setWakeOnMagicPacket(bool active);
-    virtual IOReturn getPacketFilters(const OSSymbol *group, UInt32 *filters) const;
+	virtual IOReturn getHardwareAddress(IOEthernetAddress *addr) override;
+	virtual IOReturn setHardwareAddress(const IOEthernetAddress *addr) override;
+	virtual IOReturn setPromiscuousMode(bool active) override;
+	virtual IOReturn setMulticastMode(bool active) override;
+	virtual IOReturn setMulticastList(IOEthernetAddress *addrs, UInt32 count) override;
+	virtual IOReturn getChecksumSupport(UInt32 *checksumMask, UInt32 checksumFamily, bool isOutput) override;
+    virtual IOReturn setWakeOnMagicPacket(bool active) override;
+    virtual IOReturn getPacketFilters(const OSSymbol *group, UInt32 *filters) const override;
     
-    virtual UInt32 getFeatures() const;
-    
+    virtual UInt32 getFeatures() const override;
+    virtual IOReturn getMaxPacketSize(UInt32 * maxSize) const override;
+    virtual IOReturn setMaxPacketSize(UInt32 maxSize) override;
+
 private:
     bool initPCIConfigSpace(IOPCIDevice *provider);
     static IOReturn setPowerStateWakeAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
@@ -251,12 +257,15 @@ private:
 
     bool setupDMADescriptors();
     void freeDMADescriptors();
-    void txClearDescriptors();
+    void clearDescriptors();
     void checkLinkStatus();
     void updateStatitics();
     void setLinkUp();
     void setLinkDown();
     bool checkForDeadlock();
+
+    /* Jumbo frame support methods */
+    void discardPacketFragment();
 
     /* Hardware initialization methods. */
     bool initRTL8111();
@@ -278,7 +287,6 @@ private:
     void exitOOB();
     
     /* Hardware specific methods */
-    //void getDescCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
     inline void getChecksumCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums);
     inline void getTso4Command(UInt32 *cmd1, UInt32 *cmd2, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
     inline void getTso6Command(UInt32 *cmd1, UInt32 *cmd2, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
@@ -321,6 +329,9 @@ private:
     IOPhysicalAddress64 rxPhyAddr;
     struct RtlDmaDesc *rxDescArray;
 	IOMbufNaturalMemoryCursor *rxMbufCursor;
+    mbuf_t rxPacketHead;
+    mbuf_t rxPacketTail;
+    UInt32 rxPacketSize;
     UInt64 multicastFilter;
     UInt32 rxNextDescIndex;
     UInt32 rxConfigReg;

@@ -6,7 +6,7 @@
 //  Copyright © 2019 Laura Müller. All rights reserved.
 //
 
-#include "RealtekRTL8111.h"
+#include "RealtekRTL8111.hpp"
 
 #pragma mark --- hardware initialization methods ---
 
@@ -132,6 +132,7 @@ IOReturn RTL8111::setPowerStateSleepAction(OSObject *owner, void *arg1, void *ar
 bool RTL8111::initRTL8111()
 {
     struct rtl8168_private *tp = &linuxData;
+    OSNumber *chipsetNumber;
     UInt32 i, csi_tmp;
     UInt16 macAddr[4];
     UInt8 options1, options2;
@@ -156,6 +157,13 @@ bool RTL8111::initRTL8111()
     }
     tp->chipset =  tp->mcfg;
     
+    chipsetNumber = OSNumber::withNumber(tp->chipset, 32);
+    
+    if (chipsetNumber) {
+        setProperty(kChipsetName, chipsetNumber);
+        chipsetNumber->release();
+    }
+
     /* Setup EEE support. */
     if ((tp->mcfg >= CFG_METHOD_14) && (linuxData.eeeEnable != 0)) {
         linuxData.eee_adv_t = eeeCap = (kEEEMode100 | kEEEMode1000);
@@ -668,11 +676,8 @@ void RTL8111::restartRTL8111()
     
     /* Reset NIC and cleanup both descriptor rings. */
     rtl8168_nic_reset(&linuxData);
-    txClearDescriptors();
-    
-    if (rxInterrupt(netif, kNumRxDesc, NULL, NULL))
-        netif->flushInputQueue();
-    
+    clearDescriptors();
+        
     rxNextDescIndex = 0;
     deadlockWarn = 0;
     
@@ -998,6 +1003,9 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         WriteReg8(0xD0, ReadReg8(0xD0) | BIT_6);
         WriteReg8(0xF2, ReadReg8(0xF2) | BIT_6);
         
+        if (mtu > ETH_DATA_LEN)
+            WriteReg8(MTPS, 0x27);
+
         /* disable clock request. */
         pciDevice->configWrite8(0x81, 0x00);
         
@@ -1018,6 +1026,9 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         if (tp->aspm)
             WriteReg8(0xF1, ReadReg8(0xF1) | BIT_7);
         
+        if (mtu > ETH_DATA_LEN)
+            WriteReg8(MTPS, 0x27);
+
         WriteReg8(TDFNR, 0x8);
         
         WriteReg8(0xD0, ReadReg8(0xD0) | BIT_6);
@@ -1055,6 +1066,9 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         if (tp->aspm)
             WriteReg8(0xF1, ReadReg8(0xF1) | BIT_7);
         
+        if (mtu > ETH_DATA_LEN)
+            WriteReg8(MTPS, 0x27);
+
         WriteReg8(TDFNR, 0x8);
         
         WriteReg8(0xD0, ReadReg8(0xD0) | BIT_6);
@@ -1148,6 +1162,9 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         
         if (tp->aspm)
             WriteReg8(0xF1, ReadReg8(0xF1) | BIT_7);
+        
+        if (mtu > ETH_DATA_LEN)
+            WriteReg8(MTPS, 0x27);
         
         WriteReg8(0xD0, ReadReg8(0xD0) | BIT_6);
         WriteReg8(0xF2, ReadReg8(0xF2) | BIT_6);
@@ -1246,6 +1263,9 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         csi_tmp |= BIT_1;
         rtl8168_eri_write(baseAddr, 0x1D0, 1, csi_tmp, ERIAR_ExGMAC);
         
+        if (mtu > ETH_DATA_LEN)
+            WriteReg8(MTPS, 0x27);
+
         if (tp->mcfg == CFG_METHOD_27 || tp->mcfg == CFG_METHOD_28) {
             rtl8168_oob_mutex_lock(tp);
             rtl8168_eri_write(baseAddr, 0x5F0, 2, 0x4F87, ERIAR_ExGMAC);
@@ -1333,6 +1353,9 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
         if (tp->aspm)
             WriteReg8(0xF1, ReadReg8(0xF1) | BIT_7);
         
+        if (mtu > ETH_DATA_LEN)
+            WriteReg8(MTPS, 0x27);
+
         WriteReg8(0xD0, ReadReg8(0xD0) | BIT_6);
         WriteReg8(0xF2, ReadReg8(0xF2) | BIT_6);
         
@@ -1511,7 +1534,7 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
             break;
     }
     /* Set RxMaxSize register */
-    WriteReg16(RxMaxSize, RX_BUF_SIZE);
+    WriteReg16(RxMaxSize, mtu + (ETH_HLEN + ETH_FCS_LEN));
     
     rtl8168_disable_rxdvgate(tp);
     rtl8168_dsm(tp, DSM_MAC_INIT);
@@ -1633,7 +1656,7 @@ void RTL8111::setPhyMedium()
         tp->phy_auto_nego_reg = autoNego;
         tp->phy_1000_ctrl_reg = gigaCtrl;
         
-        /* Setup EEE advertisemnet. */
+        /* Setup EEE advertisement. */
         if (eeeCap) {
             if ((tp->mcfg >= CFG_METHOD_14) && (tp->mcfg < CFG_METHOD_21)) {
                 rtl8168_mdio_write(&linuxData, 0x0D, 0x0007);

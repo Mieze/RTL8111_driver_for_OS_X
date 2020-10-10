@@ -227,6 +227,11 @@ enum {
     kIONetworkWorkLoopSynchronous   = 0x00000001
 };
 
+enum {
+    kIONetworkClientBehaviorLinkStateActiveRegister = 0x00000001,
+    kIONetworkClientBehaviorLinkStateChangeMessage  = 0x00000002
+};
+
 /*! @enum IOMbufServiceClass
     @discussion Service class of a mbuf packet.
     @constant kIOMbufServiceClassBKSYS Background System-Initiated.
@@ -376,6 +381,7 @@ private:
         uint32_t                    txPullOptions;
         uint32_t                    txQueueSize;
         uint32_t                    txSchedulingModel;
+        uint32_t                    txTargetQdelay;
         uint32_t                    txThreadState;
         volatile UInt32             txThreadFlags;
         uint32_t                    txThreadSignal;
@@ -396,6 +402,10 @@ private:
         void *                      peqRefcon;
         uint32_t                    subType;
 #endif
+        uint16_t                    txStartDelayQueueLength;	/* optional */
+        uint16_t                    txStartDelayTimeout;        /* optional */
+        IOOptionBits                clientBehavior;
+        thread_call_t               inputEventThreadCall; // inputEvent() thread call
     };
 
     ExpansionData *         _reserved;
@@ -438,6 +448,7 @@ private:
                                   u_int32_t arglen, void *arg);
 #endif
     void            notifyDriver( uint32_t type, void * data );
+    static void     handleNetworkInputEvent(thread_call_param_t param0, thread_call_param_t param1);
 
 public:
 
@@ -694,7 +705,7 @@ public:
 	bool setExtendedFlags(UInt32 flags, UInt32 clear = 0);
 
     /* Override IOService::message() */
-    virtual IOReturn message( UInt32 type, IOService * provider, void * argument );
+    virtual IOReturn message( UInt32 type, IOService * provider, void * argument ) APPLE_KEXT_OVERRIDE;
 
 /*! @function debuggerRegistered
     @abstract Tells the <code>IONetworkData</code> that this interface will be
@@ -781,18 +792,18 @@ protected:
     clearInputQueue() is called to ensure that the input queue is empty.
     The interface should have already detached from the network stack.
 */
-    virtual void     free( void );
+    virtual void     free( void ) APPLE_KEXT_OVERRIDE;
 
     /* Override IOService::handleOpen() */
     virtual bool     handleOpen( IOService *  client,
                                  IOOptionBits options,
-                                 void *       argument );
+                                 void *       argument ) APPLE_KEXT_OVERRIDE;
 
     /* Override IOService::handleClose() */
-    virtual void     handleClose( IOService * client, IOOptionBits options );
+    virtual void     handleClose( IOService * client, IOOptionBits options ) APPLE_KEXT_OVERRIDE;
 
     /* Override IOService::handleIsOpen() */
-    virtual bool     handleIsOpen( const IOService * client ) const;
+    virtual bool     handleIsOpen( const IOService * client ) const APPLE_KEXT_OVERRIDE;
 
 /*! @function lock
     @abstract Acquires a recursive lock owned by the interface.
@@ -914,7 +925,7 @@ protected:
     virtual IOReturn newUserClient( task_t           owningTask,
                                     void *           security_id,
                                     UInt32           type,
-                                    IOUserClient **  handler );
+                                    IOUserClient **  handler ) APPLE_KEXT_OVERRIDE;
 
 /*! @function setInterfaceState
     @abstract Updates the interface object state flags.
@@ -942,7 +953,7 @@ protected:
     virtual IOReturn powerStateWillChangeTo(
                                 IOPMPowerFlags  flags,
                                 unsigned long   stateNumber,
-                                IOService *     policyMaker );
+                                IOService *     policyMaker ) APPLE_KEXT_OVERRIDE;
 
 /*! @function powerStateDidChangeTo
     @abstract Handles a post-change power interest notification from the
@@ -960,7 +971,7 @@ protected:
     virtual IOReturn powerStateDidChangeTo(
                                 IOPMPowerFlags  flags,
                                 unsigned long   stateNumber,
-                                IOService *     policyMaker );
+                                IOService *     policyMaker ) APPLE_KEXT_OVERRIDE;
 
 /*! @function controllerWillChangePowerState
     @abstract Handles a notification that the network controller servicing
@@ -1002,14 +1013,14 @@ public:
     /* Override IOService::willTerminate() */
     virtual bool     willTerminate(
                                 IOService *  provider,
-                                IOOptionBits options );
+                                IOOptionBits options ) APPLE_KEXT_OVERRIDE;
 
     /* Override IOService::requestTerminate() */
     virtual bool     requestTerminate(
-                                IOService * provider, IOOptionBits options );
+                                IOService * provider, IOOptionBits options ) APPLE_KEXT_OVERRIDE;
 
     /* Override IOService::serializeProperties() */
-    virtual bool     serializeProperties( OSSerialize * s ) const;
+    virtual bool     serializeProperties( OSSerialize * s ) const APPLE_KEXT_OVERRIDE;
 
 /*! @function attachToDataLinkLayer
     @abstract Attach the network interface to the BSD data link layer.
@@ -1084,6 +1095,20 @@ protected:
 	virtual bool     initIfnetParams( struct ifnet_init_params * params );
 
     OSMetaClassDeclareReservedUsed(IONetworkInterface, 4);
+    
+/*! @function configureOutputStartDelay
+    @abstract Configure the output start delay
+    @discussion This optional routine, if used, needs to be called after 
+    IONetworkInterface::init() and before IONetworkInterface::attachToDataLinkLayer().
+    This allows for over-riding ifnet_init_eparams.start_delay_qlen and 
+    ifnet_init_eparams.start_delay_timeout.
+    @param outputStartDelayQueueLength, maps to ifnet_init_eparams.start_delay_qlen
+    @param outputStartDelayTimeout, maps to ifnet_init_eparams.start_delay_timeout
+    @result <code>kIOReturnSuccess</code> if interface was successfully
+    configured.
+ */
+    IOReturn configureOutputStartDelay( uint16_t outputStartDelayQueueLength,
+                                        uint16_t outputStartDelayTimeout );
 
 public:
 #ifdef __PRIVATE_SPI__
@@ -1128,10 +1153,13 @@ public:
     requires strict scheduling strategy (e.g. 802.11 WMM), and that the
     networking stack is only responsible for creating multiple queues for the
     corresponding service classes.
+    @constant kOutputPacketSchedulingModelFqCodel
+    The FQ-CoDel packet scheduling model.
 */
     enum {
         kOutputPacketSchedulingModelNormal          = 0,
-        kOutputPacketSchedulingModelDriverManaged   = 1
+        kOutputPacketSchedulingModelDriverManaged   = 1,
+        kOutputPacketSchedulingModelFqCodel         = 2
     };
 
 /*! @function configureOutputPullModel
@@ -1143,7 +1171,8 @@ public:
     can pull packets from. An output thread will notify the driver through
     <code>outputStart()</code> when packets are added to the output queue.
     @param driverQueueSize The number of packets that the driver's transmit
-    queue or ring can hold.
+    queue or ring can hold. This parameter is not currently used by the family,
+    and drivers can pass zero.
     @param options <code>kIONetworkWorkLoopSynchronous</code> forces the output
     thread to call <code>outputStart()</code> on the driver's work loop context.
     @param outputQueueSize The size of the interface output queue. Unless the
@@ -1153,6 +1182,7 @@ public:
     Pass zero or <code>kOutputPacketSchedulingModelNormal</code> for the default
     model which lets the network stacking choose the most appropriate scheduling
     and queueing algorithm.
+    @param outputTargetQdelay Allow drivers to set the default target delay.
     @result <code>kIOReturnSuccess</code> if interface was successfully
     configured to use the pull-model for outbound packets.
 */
@@ -1160,7 +1190,8 @@ public:
                             uint32_t       driverQueueSize,
                             IOOptionBits   options               = 0,
                             uint32_t       outputQueueSize       = 0,
-                            uint32_t       outputSchedulingModel = 0 );
+                            uint32_t       outputSchedulingModel = 0,
+                            uint32_t       outputTargetQdelay = 0);
 
     OSMetaClassDeclareReservedUsed(IONetworkInterface, 5);
 
@@ -1330,6 +1361,26 @@ public:
 
     OSMetaClassDeclareReservedUsed(IONetworkInterface, 9);
 
+/*! @function dequeueOutputPacketsWithMaxSize
+	@abstract Dequeue packets with a byte size constraint.
+    @discussion See <code>dequeueOutputPackets</code>.
+    @param maxSize The maximum byte size of the dequeued packet chain.
+    This value must be greater than zero.
+    @param packetHead Pointer to the first packet that was dequeued.
+    @param packetTail Optional pointer to the last packet that was dequeued.
+	@param packetCount Optional pointer to store the number of packets that
+    was dequeued.
+	@param packetBytes Optional pointer to store the total length of packets
+    that was dequeued. The length of each packet is given by
+    <code>mbuf_pkthdr_len()</code>.
+*/
+    IOReturn dequeueOutputPacketsWithMaxSize(
+                            uint32_t            maxSize,
+                            mbuf_t *            packetHead,
+                            mbuf_t *            packetTail  = 0,
+                            uint32_t *          packetCount = 0,
+                            uint64_t *          packetBytes = 0 );
+
 /*  @function installOutputPreEnqueueHandler
     @abstract Install a handler to intercept all output packets before they
     are added to the output queue.
@@ -1447,6 +1498,19 @@ public:
     IOReturn setPacketPollingParameters(
                             const IONetworkPacketPollingParameters * params,
                             IOOptionBits options = 0 );
+
+    /*! @function configureClientBehavior
+     @abstract Configure client behavior.
+     @discussion Invoked by drivers that wish to alter IONetworkInterface's behavior.
+     @param options set <code>kIONetworkClientBehaviorLinkStateActiveRegister</code>
+     to have IONetworkInterface trigger matching when link state goes to active.
+     set <code>kIONetworkClientBehaviorLinkStateChangeMessage</code> to have
+     IONetworkInterface deliver an IOKit message when link state changes.
+     @result Returns <code>kIOReturnSuccess</code> if successful,
+     otherwise an appropriate error code.
+     */
+    IOReturn configureClientBehavior( IOOptionBits options = 0 );
+
 #else   /* !__PRIVATE_SPI__ */
     OSMetaClassDeclareReservedUnused( IONetworkInterface,  5);
     OSMetaClassDeclareReservedUnused( IONetworkInterface,  6);

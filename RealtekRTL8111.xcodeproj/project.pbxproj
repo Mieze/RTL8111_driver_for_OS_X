@@ -15,26 +15,26 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		D31CAE472531DF7000A11416 /* kpi_mbuf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = kpi_mbuf.h; sourceTree = "<group>"; };
+		D31CAE482531DF7000A11416 /* kpi_interface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = kpi_interface.h; sourceTree = "<group>"; };
+		D31CAE492531DF7000A11416 /* IOEthernetInterface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOEthernetInterface.h; sourceTree = "<group>"; };
+		D31CAE4A2531DF7000A11416 /* IONetworkController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IONetworkController.h; sourceTree = "<group>"; };
+		D31CAE4B2531DF7100A11416 /* IOEthernetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOEthernetController.h; sourceTree = "<group>"; };
+		D31CAE4C2531DF7100A11416 /* IONetworkInterface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IONetworkInterface.h; sourceTree = "<group>"; };
+		D31CAE4E2531DFE700A11416 /* RealtekRTL8111.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = RealtekRTL8111.hpp; sourceTree = "<group>"; };
 		D34D36C41AD2F62B00EEEC08 /* RealtekRTL8111.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RealtekRTL8111.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		D34D36C61AD2F71600EEEC08 /* RealtekRTL8111-V2-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "RealtekRTL8111-V2-Prefix.pch"; sourceTree = "<group>"; };
 		D34D36C91AD2F7A900EEEC08 /* APPLE_LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = APPLE_LICENSE; sourceTree = "<group>"; };
-		D34D36CA1AD2F7C500EEEC08 /* IONetworkController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IONetworkController.h; sourceTree = "<group>"; };
-		D34D36CB1AD2F7C500EEEC08 /* IONetworkInterface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IONetworkInterface.h; sourceTree = "<group>"; };
 		D34D782722FAED470065D59C /* r8168_dash.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = r8168_dash.h; sourceTree = "<group>"; };
 		D37A5F5B16CAF7D600644820 /* gpl.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = gpl.txt; sourceTree = "<group>"; };
 		D37BD68316C605F500C255A2 /* Kernel.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Kernel.framework; path = System/Library/Frameworks/Kernel.framework; sourceTree = SDKROOT; };
 		D37BD68616C605F500C255A2 /* RealtekRTL8111-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "RealtekRTL8111-Info.plist"; sourceTree = "<group>"; };
 		D37BD68816C605F500C255A2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		D37BD69616C6065300C255A2 /* RealtekRTL8111.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RealtekRTL8111.h; sourceTree = "<group>"; };
 		D37BD69716C6065300C255A2 /* RealtekRTL8111.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RealtekRTL8111.cpp; sourceTree = "<group>"; };
 		D37BD69B16C6068D00C255A2 /* linux.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = linux.h; sourceTree = "<group>"; };
 		D37BD69C16C6068D00C255A2 /* mii.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = mii.h; sourceTree = "<group>"; };
 		D37BD69D16C6068D00C255A2 /* if_ether.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = if_ether.h; sourceTree = "<group>"; };
 		D37BD69E16C6068D00C255A2 /* ethertool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ethertool.h; sourceTree = "<group>"; };
-		D38070CD243F618A00CCC89B /* IOEthernetInterface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOEthernetInterface.h; sourceTree = "<group>"; };
-		D38070CE243F618A00CCC89B /* IOEthernetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOEthernetController.h; sourceTree = "<group>"; };
-		D38070D0243F656600CCC89B /* kpi_interface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = kpi_interface.h; sourceTree = "<group>"; };
-		D38070D1243F66B300CCC89B /* kpi_mbuf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = kpi_mbuf.h; sourceTree = "<group>"; };
 		D3C8EF0C22FA0BDF00F3BF68 /* RealtekRTL8111Hardware.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RealtekRTL8111Hardware.cpp; sourceTree = "<group>"; };
 		D3C8EF0F22FA0D0C00F3BF68 /* RealtekRTL8111Linux-804704.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "RealtekRTL8111Linux-804704.cpp"; sourceTree = "<group>"; };
 		D3C8EF1022FA0D0C00F3BF68 /* RealtekRTL8111Linux-804704.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = "RealtekRTL8111Linux-804704.hpp"; sourceTree = "<group>"; };
@@ -51,17 +51,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		D34D36C71AD2F76900EEEC08 /* Apple Headers */ = {
+		D31CAE462531DF4C00A11416 /* Apple Headers */ = {
 			isa = PBXGroup;
 			children = (
-				D34D36CA1AD2F7C500EEEC08 /* IONetworkController.h */,
-				D34D36CB1AD2F7C500EEEC08 /* IONetworkInterface.h */,
-				D38070CE243F618A00CCC89B /* IOEthernetController.h */,
-				D38070CD243F618A00CCC89B /* IOEthernetInterface.h */,
-				D38070D0243F656600CCC89B /* kpi_interface.h */,
-				D38070D1243F66B300CCC89B /* kpi_mbuf.h */,
+				D31CAE4B2531DF7100A11416 /* IOEthernetController.h */,
+				D31CAE492531DF7000A11416 /* IOEthernetInterface.h */,
+				D31CAE4A2531DF7000A11416 /* IONetworkController.h */,
+				D31CAE4C2531DF7100A11416 /* IONetworkInterface.h */,
+				D31CAE482531DF7000A11416 /* kpi_interface.h */,
+				D31CAE472531DF7000A11416 /* kpi_mbuf.h */,
 			);
-			name = "Apple Headers";
+			path = "Apple Headers";
 			sourceTree = "<group>";
 		};
 		D37BD67216C605F500C255A2 = {
@@ -100,8 +100,8 @@
 		D37BD68416C605F500C255A2 /* RealtekRTL8111 */ = {
 			isa = PBXGroup;
 			children = (
-				D37BD69616C6065300C255A2 /* RealtekRTL8111.h */,
 				D37BD69716C6065300C255A2 /* RealtekRTL8111.cpp */,
+				D31CAE4E2531DFE700A11416 /* RealtekRTL8111.hpp */,
 				D3C8EF0C22FA0BDF00F3BF68 /* RealtekRTL8111Hardware.cpp */,
 				D3C8EF1022FA0D0C00F3BF68 /* RealtekRTL8111Linux-804704.hpp */,
 				D3C8EF0F22FA0D0C00F3BF68 /* RealtekRTL8111Linux-804704.cpp */,
@@ -112,7 +112,7 @@
 				D37BD69E16C6068D00C255A2 /* ethertool.h */,
 				D37A5F5B16CAF7D600644820 /* gpl.txt */,
 				D34D36C91AD2F7A900EEEC08 /* APPLE_LICENSE */,
-				D34D36C71AD2F76900EEEC08 /* Apple Headers */,
+				D31CAE462531DF4C00A11416 /* Apple Headers */,
 				D37BD68516C605F500C255A2 /* Supporting Files */,
 			);
 			path = RealtekRTL8111;
@@ -167,7 +167,7 @@
 		D37BD67416C605F500C255A2 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 1140;
+				LastUpgradeCheck = 1200;
 				ORGANIZATIONNAME = "Laura Müller";
 			};
 			buildConfigurationList = D37BD67716C605F500C255A2 /* Build configuration list for PBXProject "RealtekRTL8111" */;
@@ -237,23 +237,28 @@
 		D34D36C21AD2F62B00EEEC08 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_DEADCODE_DEADSTORES = NO;
+				CLANG_ANALYZER_DIVIDE_BY_ZERO = NO;
+				CLANG_ANALYZER_NULL_DEREFERENCE = NO;
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_USE_OPTIMIZATION_PROFILE = NO;
 				CODE_SIGN_IDENTITY = "";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = $MODULE_VERSION;
+				CURRENT_PROJECT_VERSION = 2.4.0d4;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "RealtekRTL8111/RealtekRTL8111-V2-Prefix.pch";
 				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
 				INFOPLIST_FILE = "RealtekRTL8111/RealtekRTL8111-Info.plist";
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
-				MARKETING_VERSION = $MODULE_VERSION;
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MARKETING_VERSION = 2.4.0d4;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.3.0;
+				MODULE_VERSION = 2.4.0d4;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = RealtekRTL8111;
+				RUN_CLANG_STATIC_ANALYZER = YES;
 				SDKROOT = macosx;
 				WRAPPER_EXTENSION = kext;
 			};
@@ -262,11 +267,12 @@
 		D34D36C31AD2F62B00EEEC08 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_USE_OPTIMIZATION_PROFILE = NO;
 				CODE_SIGN_IDENTITY = "";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = $MODULE_VERSION;
+				CURRENT_PROJECT_VERSION = 2.4.0d4;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
 				GCC_OPTIMIZATION_LEVEL = s;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
@@ -276,10 +282,10 @@
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
 				LLVM_LTO = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
-				MARKETING_VERSION = $MODULE_VERSION;
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MARKETING_VERSION = 2.4.0d4;
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.3.0;
+				MODULE_VERSION = 2.4.0d4;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = RealtekRTL8111;
 				SDKROOT = macosx;
@@ -305,6 +311,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -353,6 +360,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;

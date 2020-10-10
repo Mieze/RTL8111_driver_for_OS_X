@@ -2,6 +2,9 @@
 // Prefix header for all source files of the 'RealtekRTL8111' target in the 'RealtekRTL8111' project
 //
 
+#ifndef RealtekRTL8111_Prefix_pch
+#define RealtekRTL8111_Prefix_pch
+
 #define __PRIVATE_SPI__
 
 #ifdef __cplusplus
@@ -24,7 +27,6 @@ extern "C" {
 #include <netinet/tcp.h>
 #include <sys/appleapiopts.h>
 #include <sys/errno.h>
-//#include <sys/kpi_mbuf.h>
 
 #ifdef __cplusplus
 }
@@ -47,9 +49,9 @@ typedef u_int32_t ifnet_ctl_cmd_t;
 #include <IOKit/IOLocks.h>
 #include <IOKit/IOTimerEventSource.h>
 #include <IOKit/IOTypes.h>
-//#include <IOKit/network/IOEthernetController.h>
-//#include <IOKit/network/IOEthernetInterface.h>
 #include <IOKit/network/IOBasicOutputQueue.h>
 #include <IOKit/pci/IOPCIDevice.h>
 
 #endif // __cplusplus
+
+#endif /* RealtekRTL8111_Prefix_pch */
