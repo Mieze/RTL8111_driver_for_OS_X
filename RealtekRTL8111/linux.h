@@ -288,8 +288,6 @@ struct pci_dev {
     UInt16 subsystem_device;
 };
 
-#define eee_enable tp->eeeEnable
-
 #define BMCR_SPEED10    0x0000
 
 /* The additional bytes required by VLAN

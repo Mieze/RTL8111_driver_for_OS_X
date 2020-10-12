@@ -1757,7 +1757,6 @@ struct rtl8168_private {
     
     UInt32 hwoptimize;
     UInt32 s0_magic_packet;
-    UInt32 eeeEnable;
 };
 
 enum eetype {

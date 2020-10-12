@@ -165,7 +165,7 @@ bool RTL8111::initRTL8111()
     }
 
     /* Setup EEE support. */
-    if ((tp->mcfg >= CFG_METHOD_14) && (linuxData.eeeEnable != 0)) {
+    if ((tp->mcfg >= CFG_METHOD_14) && (linuxData.eee_enabled != 0)) {
         linuxData.eee_adv_t = eeeCap = (kEEEMode100 | kEEEMode1000);
     }
     /* Select the chip revision. */
@@ -210,7 +210,7 @@ bool RTL8111::initRTL8111()
     }
     
     if (HW_DASH_SUPPORT_TYPE_3(tp) && tp->HwPkgDet == 0x06)
-        eee_enable = 0;
+        tp->eee_enabled = 0;
     
     switch (tp->mcfg) {
         case CFG_METHOD_21:

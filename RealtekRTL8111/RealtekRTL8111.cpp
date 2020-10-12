@@ -1124,11 +1124,11 @@ void RTL8111::getParams()
         enableEEE = OSDynamicCast(OSBoolean, params->getObject(kEnableEeeName));
         
         if (enableEEE)
-            linuxData.eeeEnable = (enableEEE->getValue()) ? 1 : 0;
+            linuxData.eee_enabled = (enableEEE->getValue()) ? 1 : 0;
         else
-            linuxData.eeeEnable = 0;
+            linuxData.eee_enabled = 0;
         
-        IOLog("[RealtekRTL8111]: EEE support %s.\n", linuxData.eeeEnable ? onName : offName);
+        IOLog("[RealtekRTL8111]: EEE support %s.\n", linuxData.eee_enabled ? onName : offName);
         
         poll = OSDynamicCast(OSBoolean, params->getObject(kEnableRxPollName));
         rxPoll = (poll) ? poll->getValue() : false;
@@ -1172,7 +1172,7 @@ void RTL8111::getParams()
         }
     } else {
         disableASPM = true;
-        linuxData.eeeEnable = 1;
+        linuxData.eee_enabled = 1;
         rxPoll = true;
         enableTSO4 = true;
         enableTSO6 = true;
@@ -1886,7 +1886,7 @@ void RTL8111::checkLinkStatus()
                     rtl8168_eri_write(baseAddr, 0x1dc, 4, 0x0000003f, ERIAR_ExGMAC);
                 }
             }
-        } else if ((tp->mcfg == CFG_METHOD_14 || tp->mcfg == CFG_METHOD_15) && eee_enable ==1) {
+        } else if ((tp->mcfg == CFG_METHOD_14 || tp->mcfg == CFG_METHOD_15) && tp->eee_enabled ==1) {
             /*Full -Duplex  mode*/
             if (currLinkState & FullDup) {
                 rtl8168_mdio_write(tp, 0x1F, 0x0006);
