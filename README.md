@@ -20,7 +20,7 @@ TCP, UDP and IPv4 checksum offload (receive and transmit).
 - The driver is published under GPLv2.
 
 Limitations
-- As checksum offload doesn't work with jumbo frames they are currently unsupported and will probably never be.
+- As checksum offload doesn't work with jumbo frames on older versions of the RTL8111, jumbo frames are only supported on chiset 16 (RTL8111E-VL) and above.
 - No support for 32bit kernels.
 
 Installation
