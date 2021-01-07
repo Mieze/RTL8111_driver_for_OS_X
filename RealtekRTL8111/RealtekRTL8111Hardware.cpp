@@ -690,6 +690,7 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
     struct rtl8168_private *tp = &linuxData;
     UInt32 csi_tmp;
     UInt16 mac_ocp_data;
+    UInt16 m;
     UInt8 deviceControl;
     
     WriteReg32(RxConfig, (RX_DMA_BURST << RxCfgDMAShift));
@@ -1534,7 +1535,8 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
             break;
     }
     /* Set RxMaxSize register */
-    WriteReg16(RxMaxSize, mtu + (ETH_HLEN + ETH_FCS_LEN));
+    m = mtu + ETH_HLEN + 9;
+    WriteReg16(RxMaxSize, (m > RX_BUF_SIZE) ? m : RX_BUF_SIZE);
     
     rtl8168_disable_rxdvgate(tp);
     rtl8168_dsm(tp, DSM_MAC_INIT);
