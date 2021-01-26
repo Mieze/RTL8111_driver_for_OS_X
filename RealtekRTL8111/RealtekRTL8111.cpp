@@ -944,6 +944,7 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 autoneg = AUTONEG_ENABLE;
                 speed = 0;
                 duplex = DUPLEX_FULL;
+                flowCtl = kFlowControlOn;
                 linuxData.eee_adv_t = eeeCap;
                 break;
                 
