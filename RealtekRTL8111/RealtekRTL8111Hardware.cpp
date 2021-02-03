@@ -1668,8 +1668,10 @@ void RTL8111::setPhyMedium()
                 rtl8168_mdio_write(tp, 0x1F, 0x0000);
             }
         }
+        rtl8168_mdio_write(tp, 0x1f, 0x0000);
         rtl8168_mdio_write(tp, MII_ADVERTISE, autoNego);
         rtl8168_mdio_write(tp, MII_CTRL1000, gigaCtrl);
+        rtl8168_mdio_write(tp, 0x1f, 0x0000);
         rtl8168_mdio_write(tp, MII_BMCR, BMCR_RESET | BMCR_ANENABLE | BMCR_ANRESTART);
         mdelay(20);
     } else {
