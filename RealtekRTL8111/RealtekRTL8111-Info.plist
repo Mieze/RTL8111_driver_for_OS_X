@@ -82,5 +82,7 @@
 	</dict>
 	<key>OSBundleRequired</key>
 	<string>Network-Root</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>10.14</string>
 </dict>
 </plist>
