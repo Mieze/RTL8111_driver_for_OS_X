@@ -208,10 +208,10 @@ bool RTL8111::initRTL8111()
             tp->HwPkgDet = (tp->HwPkgDet >> 3) & 0x0F;
             break;
     }
-    
+/*
     if (HW_DASH_SUPPORT_TYPE_3(tp) && tp->HwPkgDet == 0x06)
         tp->eee_enabled = 0;
-    
+*/
     switch (tp->mcfg) {
         case CFG_METHOD_21:
         case CFG_METHOD_22:
@@ -1587,9 +1587,11 @@ void RTL8111::setPhyMedium()
     struct rtl8168_private *tp = &linuxData;
     int autoNego = 0;
     int gigaCtrl = 0;
-    int force = 0;
-    int use_default = 0;
 
+    if ((speed != SPEED_1000) && (speed != SPEED_100) && (speed != SPEED_10)) {
+        duplex = DUPLEX_FULL;
+        autoneg = AUTONEG_ENABLE;
+    }
     if (tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30 ||
         tp->mcfg == CFG_METHOD_31 || tp->mcfg == CFG_METHOD_32) {
         /* Disable Giga Lite. */
@@ -1602,94 +1604,46 @@ void RTL8111::setPhyMedium()
         rtl8168_mdio_write(tp, 0x1F, 0x0A40);
         rtl8168_mdio_write(tp, 0x1F, 0x0000);
     }
-    if ((speed != SPEED_1000) && (speed != SPEED_100) && (speed != SPEED_10)) {
-        speed = SPEED_1000;
-        duplex = DUPLEX_FULL;
-        autoneg = AUTONEG_ENABLE;
-        use_default = 1;
-    }
     autoNego = rtl8168_mdio_read(tp, MII_ADVERTISE);
     autoNego &= ~(ADVERTISE_10HALF | ADVERTISE_10FULL | ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM);
     
     gigaCtrl = rtl8168_mdio_read(tp, MII_CTRL1000);
     gigaCtrl &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
     
-    if (tp->HwHasWrRamCodeToMicroP == TRUE) {
-        if ((tp->eee_enabled) && (linuxData.eee_adv_t != 0)) {
-            rtl8168_enable_EEE(tp);
-            DebugLog("Enable EEE support.\n");
-        } else {
-            rtl8168_disable_EEE(tp);
-            DebugLog("Disable EEE support.\n");
-        }
-    }
     if (autoneg == AUTONEG_ENABLE) {
-        /* n-way force */
-        if (speed == SPEED_1000) {
-            if (use_default) {
-                /* The default medium has been selected. */
-                gigaCtrl |= ADVERTISE_1000HALF | ADVERTISE_1000FULL;
-                autoNego |= ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_10HALF | ADVERTISE_10FULL;
-            } else {
-                if (duplex == DUPLEX_HALF) {
-                    gigaCtrl |= ADVERTISE_1000HALF;
-                } else {
-                    gigaCtrl |= ADVERTISE_1000FULL;
-                }
-            }
-        } else if (speed == SPEED_100) {
-            if (duplex == DUPLEX_HALF) {
-                autoNego |= ADVERTISE_100HALF;
-            } else {
-                autoNego |=  ADVERTISE_100FULL;
-            }
-        } else { /* speed == SPEED_10 */
-            if (duplex == DUPLEX_HALF) {
-                autoNego |= ADVERTISE_10HALF;
-            } else {
-                autoNego |= ADVERTISE_10FULL;
-            }
+        /* The default medium has been selected. */
+        gigaCtrl |= ADVERTISE_1000FULL;
+        autoNego |= ADVERTISE_100HALF | ADVERTISE_100FULL | ADVERTISE_10HALF | ADVERTISE_10FULL;
+    } else if (speed == SPEED_1000) {
+        gigaCtrl |= ADVERTISE_1000FULL;
+    } else if (speed == SPEED_100) {
+        if (duplex == DUPLEX_HALF) {
+            autoNego |= ADVERTISE_100HALF;
+        } else {
+            autoNego |=  ADVERTISE_100FULL;
         }
-        
-        /* Set flow control support. */
-        if (flowCtl == kFlowControlOn)
-            autoNego |= ADVERTISE_PAUSE_CAP|ADVERTISE_PAUSE_ASYM;
-        
-        tp->phy_auto_nego_reg = autoNego;
-        tp->phy_1000_ctrl_reg = gigaCtrl;
-        
-        /* Setup EEE advertisement. */
-        if (eeeCap) {
-            if ((tp->mcfg >= CFG_METHOD_14) && (tp->mcfg < CFG_METHOD_21)) {
-                rtl8168_mdio_write(&linuxData, 0x0D, 0x0007);
-                rtl8168_mdio_write(&linuxData, 0x0E, 0x003C);
-                rtl8168_mdio_write(&linuxData, 0x0D, 0x4007);
-                rtl8168_mdio_write(&linuxData, 0x0E, linuxData.eee_adv_t);
-                rtl8168_mdio_write(tp, 0x1F, 0x0000);
-            }
+    } else { /* speed == SPEED_10 */
+        if (duplex == DUPLEX_HALF) {
+            autoNego |= ADVERTISE_10HALF;
+        } else {
+            autoNego |= ADVERTISE_10FULL;
         }
-        rtl8168_mdio_write(tp, 0x1f, 0x0000);
-        rtl8168_mdio_write(tp, MII_ADVERTISE, autoNego);
-        rtl8168_mdio_write(tp, MII_CTRL1000, gigaCtrl);
-        rtl8168_mdio_write(tp, 0x1f, 0x0000);
-        rtl8168_mdio_write(tp, MII_BMCR, BMCR_RESET | BMCR_ANENABLE | BMCR_ANRESTART);
-        mdelay(20);
-    } else {
-        /* true force */
-        if ((speed == SPEED_10) && (duplex == DUPLEX_HALF)) {
-            force = BMCR_SPEED10;
-        } else if ((speed == SPEED_10) && (duplex == DUPLEX_FULL)) {
-            force = BMCR_SPEED10 | BMCR_FULLDPLX;
-        } else if ((speed == SPEED_100) && (duplex == DUPLEX_HALF)) {
-            force = BMCR_SPEED100;
-        } else if ((speed == SPEED_100) && (duplex == DUPLEX_FULL)) {
-            force = BMCR_SPEED100 | BMCR_FULLDPLX;
-        }
-        
-        rtl8168_mdio_write(tp, 0x1f, 0x0000);
-        rtl8168_mdio_write(tp, MII_BMCR, force);
     }
-    tp->autoneg = autoneg;
+    /* Set flow control support. */
+    if (flowCtl == kFlowControlOn)
+        autoNego |= ADVERTISE_PAUSE_CAP|ADVERTISE_PAUSE_ASYM;
+        
+    tp->phy_auto_nego_reg = autoNego;
+    tp->phy_1000_ctrl_reg = gigaCtrl;
+        
+    rtl8168_mdio_write(tp, 0x1f, 0x0000);
+    rtl8168_mdio_write(tp, MII_ADVERTISE, autoNego);
+    rtl8168_mdio_write(tp, MII_CTRL1000, gigaCtrl);
+    rtl8168_mdio_write(tp, 0x1f, 0x0000);
+    rtl8168_mdio_write(tp, MII_BMCR, BMCR_RESET | BMCR_ANENABLE | BMCR_ANRESTART);
+    mdelay(20);
+
+    tp->autoneg = AUTONEG_ENABLE;
     tp->speed = speed;
     tp->duplex = duplex;
     

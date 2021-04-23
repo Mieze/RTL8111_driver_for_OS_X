@@ -71,11 +71,12 @@ bool RTL8111::init(OSDictionary *properties)
         
         mtu = ETH_DATA_LEN;
         powerState = 0;
-        speed = SPEED_1000;
+        speed = 0;
         duplex = DUPLEX_FULL;
         autoneg = AUTONEG_ENABLE;
         flowCtl = kFlowControlOff;
         linuxData.eee_adv_t = 0;
+        linuxData.eee_enabled = 1;
         eeeCap = 0;
         linuxData.aspm = 0;
         linuxData.s0_magic_packet = 0;
@@ -348,7 +349,7 @@ IOReturn RTL8111::enable(IONetworkInterface *netif)
         DebugLog("[RealtekRTL8111]: No medium selected. Falling back to autonegotiation.\n");
         selectedMedium = mediumTable[MEDIUM_INDEX_AUTO];
     }
-    selectMedium(selectedMedium);
+    setCurrentMedium(selectedMedium);
     enableRTL8111();
     
     /* We have to enable the interrupt because we are using a msi interrupt. */
@@ -936,8 +937,9 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
     DebugLog("selectMedium() ===>\n");
     
     if (medium) {
+        autoneg = AUTONEG_DISABLE;
         flowCtl = kFlowControlOff;
-        linuxData.eee_adv_t = 0;
+        linuxData.eee_enabled = 0;
         
         switch (medium->getIndex()) {
             case MEDIUM_INDEX_AUTO:
@@ -945,85 +947,74 @@ IOReturn RTL8111::selectMedium(const IONetworkMedium *medium)
                 speed = 0;
                 duplex = DUPLEX_FULL;
                 flowCtl = kFlowControlOn;
-                linuxData.eee_adv_t = eeeCap;
+                linuxData.eee_enabled = 1;
                 break;
                 
             case MEDIUM_INDEX_10HD:
-                autoneg = AUTONEG_DISABLE;
                 speed = SPEED_10;
                 duplex = DUPLEX_HALF;
                 break;
                 
             case MEDIUM_INDEX_10FD:
-                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_10;
                 duplex = DUPLEX_FULL;
                 break;
                 
             case MEDIUM_INDEX_100HD:
-                autoneg = AUTONEG_DISABLE;
                 speed = SPEED_100;
                 duplex = DUPLEX_HALF;
                 break;
                 
             case MEDIUM_INDEX_100FD:
-                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_100;
                 duplex = DUPLEX_FULL;
                 break;
                 
             case MEDIUM_INDEX_100FDFC:
-                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_100;
                 duplex = DUPLEX_FULL;
                 flowCtl = kFlowControlOn;
                 break;
                 
             case MEDIUM_INDEX_1000FD:
-                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
                 break;
                 
             case MEDIUM_INDEX_1000FDFC:
-                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
                 flowCtl = kFlowControlOn;
                 break;
                 
             case MEDIUM_INDEX_100FDEEE:
-                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_100;
                 duplex = DUPLEX_FULL;
-                linuxData.eee_adv_t = eeeCap;
+                linuxData.eee_enabled = 1;
                 break;
                 
             case MEDIUM_INDEX_100FDFCEEE:
-                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_100;
                 duplex = DUPLEX_FULL;
                 flowCtl = kFlowControlOn;
-                linuxData.eee_adv_t = eeeCap;
+                linuxData.eee_enabled = 1;
                 break;
                 
             case MEDIUM_INDEX_1000FDEEE:
-                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
-                linuxData.eee_adv_t = eeeCap;
+                linuxData.eee_enabled = 1;
                 break;
                 
             case MEDIUM_INDEX_1000FDFCEEE:
-                autoneg = AUTONEG_ENABLE;
                 speed = SPEED_1000;
                 duplex = DUPLEX_FULL;
                 flowCtl = kFlowControlOn;
-                linuxData.eee_adv_t = eeeCap;
+                linuxData.eee_enabled = 1;
                 break;
         }
-        setPhyMedium();
         setCurrentMedium(medium);
+        restartRTL8111();
     }
     
     DebugLog("selectMedium() <===\n");
@@ -1103,7 +1094,6 @@ void RTL8111::getParams()
 {
     OSDictionary *params;
     OSNumber *intrMit;
-    OSBoolean *enableEEE;
     OSBoolean *poll;
     OSBoolean *tso4;
     OSBoolean *tso6;
@@ -1121,15 +1111,6 @@ void RTL8111::getParams()
         disableASPM = (noASPM) ? noASPM->getValue() : false;
         
         DebugLog("[RealtekRTL8111]: PCIe ASPM support %s.\n", disableASPM ? offName : onName);
-        
-        enableEEE = OSDynamicCast(OSBoolean, params->getObject(kEnableEeeName));
-        
-        if (enableEEE)
-            linuxData.eee_enabled = (enableEEE->getValue()) ? 1 : 0;
-        else
-            linuxData.eee_enabled = 0;
-        
-        IOLog("[RealtekRTL8111]: EEE support %s.\n", linuxData.eee_enabled ? onName : offName);
         
         poll = OSDynamicCast(OSBoolean, params->getObject(kEnableRxPollName));
         rxPoll = (poll) ? poll->getValue() : false;
@@ -1173,7 +1154,6 @@ void RTL8111::getParams()
         }
     } else {
         disableASPM = true;
-        linuxData.eee_enabled = 1;
         rxPoll = true;
         enableTSO4 = true;
         enableTSO6 = true;
@@ -1822,6 +1802,8 @@ void RTL8111::checkLinkStatus()
     UInt16 newIntrMitigate = 0x5f51;
 	UInt8 currLinkState;
     
+    DebugLog("Link change interrupt: Check link status.\n");
+    
     if (tp->mcfg == CFG_METHOD_11)
 		rtl8168dp_10mbps_gphy_para(tp);
     
@@ -2235,9 +2217,9 @@ void RTL8111::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
 static const char *speed1GName = "1-Gigabit";
 static const char *speed100MName = "100-Megabit";
 static const char *speed10MName = "10-Megabit";
-static const char *duplexFullName = "Full-duplex";
-static const char *duplexHalfName = "Half-duplex";
-static const char *offFlowName = "No flow-control";
+static const char *duplexFullName = "full-duplex";
+static const char *duplexHalfName = "half-duplex";
+static const char *offFlowName = "no flow-control";
 static const char *onFlowName = "flow-control";
 
 static const char* eeeNames[kEEETypeCount] = {
