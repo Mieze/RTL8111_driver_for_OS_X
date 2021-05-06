@@ -249,13 +249,14 @@
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "RealtekRTL8111/RealtekRTL8111-V2-Prefix.pch";
 				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
+				GCC_WARN_ABOUT_DEPRECATED_FUNCTIONS = YES;
 				INFOPLIST_FILE = "RealtekRTL8111/RealtekRTL8111-Info.plist";
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
 				MARKETING_VERSION = "$(MODULE_VERSION)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.4.2d0;
+				MODULE_VERSION = 2.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = RealtekRTL8111;
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -278,6 +279,7 @@
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "RealtekRTL8111/RealtekRTL8111-V2-Prefix.pch";
 				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
+				GCC_WARN_ABOUT_DEPRECATED_FUNCTIONS = YES;
 				INFOPLIST_FILE = "RealtekRTL8111/RealtekRTL8111-Info.plist";
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
@@ -285,7 +287,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
 				MARKETING_VERSION = "$(MODULE_VERSION)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
-				MODULE_VERSION = 2.4.2d0;
+				MODULE_VERSION = 2.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.insanelymac.${PRODUCT_NAME:rfc1034identifier}";
 				PRODUCT_NAME = RealtekRTL8111;
 				SDKROOT = macosx;
