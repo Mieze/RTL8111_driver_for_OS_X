@@ -3,7 +3,6 @@ RTL8111 Driver for OS X
 
 OS X open source driver for the Realtek RTL8111/8168 family
 
-*** Please note that this driver isn't maintained by Realtek! ***
 
 Due to the lack of an OS X driver that makes use of the advanced features of the Realtek RTL81111/8168 series I started a new project with the aim to create a state of the art driver that gets the most out of those NICs which can be found on virtually any cheap board on the market today. Based on Realtek's Linux driver (version 8.035.0) I have written a driver that is optimized for performance while making efficient use of system resources and keeping the CPU usage down under heavy load.
 
@@ -23,6 +22,13 @@ Limitations
 - As checksum offload doesn't work with jumbo frames on older versions of the RTL8111, jumbo frames are only supported on chiset 16 (RTL8111E-VL) and above.
 - No support for 32bit kernels.
 
+Support
+
+Please refer to the driver's thread on insanelymac.com
+
+https://www.insanelymac.com/forum/topic/287161-new-driver-for-realtek-rtl8111/
+
+in case you have further questions, need support or want to submit a problem report. Support requests here on Github will be ignored!
 Installation
 
 Before you install the driver you have to remove any installed driver for RTL8111/8168.
@@ -46,14 +52,6 @@ Before you install the driver you have to remove any installed driver for RTL811
 Current status
 
 The driver has been successfully tested under 10.8.2 - 10.15.6 with serveral versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are more than 30 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
-
-Support
-
-Please refer to the driver's thread on insanelymac.com
-
-https://www.insanelymac.com/forum/topic/287161-new-driver-for-realtek-rtl8111/
-
-in case you have further questions, need support or want to submit a problem report. As of now, support requests here on Github will be ignored!
 
 Changelog
 
