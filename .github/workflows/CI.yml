@@ -17,5 +17,5 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: ${{ github.event.repository.name }}
-        path: build/Product/Release
+        path: build/Release
         if-no-files-found: error
