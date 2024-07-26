@@ -2,13 +2,13 @@
  * Copyright (c) 1998-2008 Apple Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
- * 
+ *
  * The contents of this file constitute Original Code as defined in and
  * are subject to the Apple Public Source License Version 1.1 (the
  * "License").  You may not use this file except in compliance with the
  * License.  Please obtain a copy of the License at
  * http://www.apple.com/publicsource and read it before using this file.
- * 
+ *
  * This Original Code and all software distributed under the License are
  * distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
@@ -16,7 +16,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.  Please see the
  * License for the specific language governing rights and limitations
  * under the License.
- * 
+ *
  * @APPLE_LICENSE_HEADER_END@
  */
 
@@ -24,18 +24,18 @@
 #define _IONETWORKINTERFACE_H
 
 /*! @defined kIONetworkInterfaceClass
-    @abstract The name of the IONetworkInterface class. 
+    @abstract The name of the IONetworkInterface class.
 */
 
 #define kIONetworkInterfaceClass  "IONetworkInterface"
 
 /*! @defined kIONetworkData
-    @abstract A property of IONetworkInterface objects. 
+    @abstract A property of IONetworkInterface objects.
     @discussion The kIONetworkData property has an OSDictionary value and is a
         container for the set of IONetworkData objects managed by the interface.
         Each entry in the dictionary is a key/value pair consisting of
         the network data name, and an OSDictionary describing the
-        contents of the network data. 
+        contents of the network data.
 */
 
 #define kIONetworkData            "IONetworkData"
@@ -44,7 +44,7 @@
     @abstract A property of IONetworkInterface objects.
     @discussion The kIOInterfaceType property has an OSNumber value that
         specifies the type of network interface that this interface represents.
-        The type constants are defined in bsd/net/if_types.h. 
+        The type constants are defined in bsd/net/if_types.h.
 */
 
 #define kIOInterfaceType          "IOInterfaceType"
@@ -60,7 +60,7 @@
 /*! @defined kIOMediaAddressLength
     @abstract A property of IONetworkInterface objects.
     @discussion The kIOMediaAddressLength property has an OSNumber value that
-        specifies the size of the media address in bytes. 
+        specifies the size of the media address in bytes.
 */
 
 #define kIOMediaAddressLength     "IOMediaAddressLength"
@@ -68,7 +68,7 @@
 /*! @defined kIOMediaHeaderLength
     @abstract A property of IONetworkInterface objects.
     @discussion The kIOMediaHeaderLength property has an OSNumber value that
-        specifies the size of the media header in bytes. 
+        specifies the size of the media header in bytes.
 */
 
 #define kIOMediaHeaderLength      "IOMediaHeaderLength"
@@ -77,7 +77,7 @@
     @abstract A property of IONetworkInterface objects.
     @discussion The kIOInterfaceFlags property has an OSNumber value that
         specifies the current value of the interface flags. The flag constants
-        are defined in bsd/net/if.h. 
+        are defined in bsd/net/if.h.
 */
 
 #define kIOInterfaceFlags         "IOInterfaceFlags"
@@ -86,7 +86,7 @@
     @abstract A property of IONetworkInterface objects.
     @discussion The kIOInterfaceExtraFlags property has an OSNumber value that
         specifies the current value of the interface eflags. The eflag constants
-        are defined in bsd/net/if.h. 
+        are defined in bsd/net/if.h.
 */
 
 #define kIOInterfaceExtraFlags    "IOInterfaceExtraFlags"
@@ -94,7 +94,7 @@
 /*! @defined kIOInterfaceUnit
     @abstract A property of IONetworkInterface objects.
     @discussion The kIOInterfaceUnit property has an OSNumber value that
-        describes the unit number assigned to the interface object. 
+        describes the unit number assigned to the interface object.
 */
 
 #define kIOInterfaceUnit          "IOInterfaceUnit"
@@ -103,7 +103,7 @@
     @abstract A property of IONetworkInterface objects.
     @discussion The kIOInterfaceState property has an OSNumber value that
         describes the current state of the interface object. This property is
-        not exported to BSD via the ifnet structure. 
+        not exported to BSD via the ifnet structure.
 */
 
 #define kIOInterfaceState         "IOInterfaceState"
@@ -111,7 +111,7 @@
 /*! @defined kIOInterfaceNamePrefix
     @abstract A property of IONetworkInterface objects.
     @discussion The kIOInterfaceNamePrefix property has an OSString value that
-        describes the string prefix for the BSD name assigned to the interface. 
+        describes the string prefix for the BSD name assigned to the interface.
 */
 
 #define kIOInterfaceNamePrefix    "IOInterfaceNamePrefix"
@@ -120,7 +120,7 @@
     @abstract A property of IONetworkInterface objects.
     @discussion The kIOInterfaceNamePrefix property has an OSBoolean value that
         describes whether the interface is the primary or the built-in network
-        interface. 
+        interface.
 */
 
 #define kIOPrimaryInterface       "IOPrimaryInterface"
@@ -129,7 +129,7 @@
     @abstract kIOBuiltin is a property of IONetworkInterface
         objects. It has an OSBoolean value.
     @discussion The kIOBuiltin property describes whether the
-        interface is built-in. 
+        interface is built-in.
 */
 
 #define kIOBuiltin                "IOBuiltin"
@@ -137,8 +137,8 @@
 /*! @defined kIOLocation
     @abstract kIOLocation is a property of IONetworkInterface
         objects. It has an OSString value.
-    @discussion The kIOLocation property describes the physical 
-        location of built-in interfaces. 
+    @discussion The kIOLocation property describes the physical
+        location of built-in interfaces.
 */
 
 #define kIOLocation               "IOLocation"
@@ -163,7 +163,7 @@
     @constant kIONetworkInterfaceDisabledState The interface is temporarily
         unable to service its clients. This will occur when the network
         controller that is servicing the interface has entered a low power
-        state that renders it unusable. 
+        state that renders it unusable.
 */
 
 enum {
@@ -318,10 +318,11 @@ struct IONetworkPacketPollingParameters {
     objects containing statistics structures. Controller drivers can
     ask for a particular data object by name and update the
     statistics counters within directly. This dictionary is added to
-    the interface's property table and is visible outside of the kernel. 
+    the interface's property table and is visible outside of the kernel.
 */
 
-class IONetworkInterface : public IOService
+
+class __exported IONetworkInterface : public IOService
 {
     OSDeclareAbstractStructors( IONetworkInterface )
 
@@ -357,7 +358,7 @@ private:
     OSDictionary *          _dataDict;
     IOMbufQueue *           _inputPushQueue;
     void *                  _unused1;
-    UInt32                  _unused2;
+    UInt32                  _hwAssists;
 
     struct ExpansionData {
         int                         unit;
@@ -393,7 +394,7 @@ private:
         uint32_t                    rxPollOptions;
         uint32_t                    rxPollModel;
         void *                      rxPollAction;
-        void *                      rxCtlAction;        
+        void *                      rxCtlAction;
         uint64_t                    rxPollEmpty;
         uint64_t                    rxPollTotal;
 #ifdef __PRIVATE_SPI__
@@ -402,7 +403,7 @@ private:
         void *                      peqRefcon;
         uint32_t                    subType;
 #endif
-        uint16_t                    txStartDelayQueueLength;	/* optional */
+        uint16_t                    txStartDelayQueueLength;    /* optional */
         uint16_t                    txStartDelayTimeout;        /* optional */
         IOOptionBits                clientBehavior;
         thread_call_t               inputEventThreadCall; // inputEvent() thread call
@@ -429,7 +430,7 @@ private:
     static errno_t  if_ioctl(ifnet_t ifp, unsigned long cmd, void * data);
     static int      if_output(ifnet_t ifp, mbuf_t);
     static errno_t  if_set_bpf_tap(ifnet_t ifp, bpf_tap_mode, bpf_packet_func);
-	static void     if_detach(ifnet_t ifp);
+    static void     if_detach(ifnet_t ifp);
     static void     if_start(ifnet_t ifp);
     static void     if_start_gated(ifnet_t ifp);
     static void     if_input_poll(ifnet_t ifp, uint32_t flags,
@@ -702,7 +703,7 @@ public:
 
     /* Compatibility methods */
     IONetworkData * getParameter(const char * aKey) const;
-	bool setExtendedFlags(UInt32 flags, UInt32 clear = 0);
+    bool setExtendedFlags(UInt32 flags, UInt32 clear = 0);
 
     /* Override IOService::message() */
     virtual IOReturn message( UInt32 type, IOService * provider, void * argument ) APPLE_KEXT_OVERRIDE;
@@ -1066,7 +1067,7 @@ protected:
 */
     virtual void     feedPacketInputTap( mbuf_t );
 
-	OSMetaClassDeclareReservedUsed(IONetworkInterface, 2);
+    OSMetaClassDeclareReservedUsed(IONetworkInterface, 2);
 
 /*! @function feedPacketOutputTap
     @abstract Feed output packets to the BPF
@@ -1075,9 +1076,9 @@ protected:
     override this method.
     @param mbuf_t Pointer to the output packet.
 */
-	virtual void     feedPacketOutputTap( mbuf_t );
+    virtual void     feedPacketOutputTap( mbuf_t );
 
-	OSMetaClassDeclareReservedUsed(IONetworkInterface, 3);
+    OSMetaClassDeclareReservedUsed(IONetworkInterface, 3);
 
 /*! @function initIfnetParams
     @abstract Allows a subclass to provide ifnet initialization parameters
@@ -1092,15 +1093,15 @@ protected:
     the caller.
     @result Returns <code>true</code> on success, <code>false</code> otherwise.
 */
-	virtual bool     initIfnetParams( struct ifnet_init_params * params );
+    virtual bool     initIfnetParams( struct ifnet_init_params * params );
 
     OSMetaClassDeclareReservedUsed(IONetworkInterface, 4);
     
 /*! @function configureOutputStartDelay
     @abstract Configure the output start delay
-    @discussion This optional routine, if used, needs to be called after 
+    @discussion This optional routine, if used, needs to be called after
     IONetworkInterface::init() and before IONetworkInterface::attachToDataLinkLayer().
-    This allows for over-riding ifnet_init_eparams.start_delay_qlen and 
+    This allows for over-riding ifnet_init_eparams.start_delay_qlen and
     ifnet_init_eparams.start_delay_timeout.
     @param outputStartDelayQueueLength, maps to ifnet_init_eparams.start_delay_qlen
     @param outputStartDelayTimeout, maps to ifnet_init_eparams.start_delay_timeout
@@ -1196,7 +1197,7 @@ public:
     OSMetaClassDeclareReservedUsed(IONetworkInterface, 5);
 
 /*! @function configureInputPacketPolling
-    @abstract Configure and enable polling of input packets.    
+    @abstract Configure and enable polling of input packets.
     @discussion A driver that supports polled-mode processing of input packets
     must call this method from <code>configureInterface()</code> to configure
     input polling. Once configured, the network stack is allowed to dynamically
@@ -1223,7 +1224,7 @@ public:
     @discussion The rates reported by this method will supersede the single
     link speed reported by <code>IONetworkController::setLinkStatus</code>.
     This method allows the driver to report asymmetric input and output data
-    rates, and also the effective data rates when available. 
+    rates, and also the effective data rates when available.
     @param outputRateMax The maximum output data rate in bit/s.
     @param inputRateMax The maximum input data rate in bit/s.
     @param outputRateEffective The effective output data rate in bit/s.
@@ -1240,8 +1241,8 @@ public:
     OSMetaClassDeclareReservedUsed(IONetworkInterface, 7);
 
 /*! @function stopOutputThread
-	@abstract Called by drivers to stop the output thread.
-	@discussion Only drivers that support the pull output model should call
+    @abstract Called by drivers to stop the output thread.
+    @discussion Only drivers that support the pull output model should call
     this method. In the stop state, the output thread will not invoke the
     driver's <code>outputStart()</code> method, even when new packets are
     added to the output queue. This method is synchronous with respect to
@@ -1250,7 +1251,7 @@ public:
     driver code. The network interface will internally stop the output
     thread before detaching from the network stack, and also before system
     shutdown and restart.
-	@param options No options are currently defined, always pass zero.
+    @param options No options are currently defined, always pass zero.
     @result <code>kIOReturnSuccess</code> if the thread was stopped,
     <code>kIOReturnTimeout</code> if the wait for output thread to exit
     <code>outputStart()</code> timed out.
@@ -1258,14 +1259,14 @@ public:
     IOReturn         stopOutputThread( IOOptionBits options = 0 );
 
 /*! @function startOutputThread
-	@abstract Called by drivers to start the output thread.
-	@discussion The output thread is initially in a stop state, and it must
+    @abstract Called by drivers to start the output thread.
+    @discussion The output thread is initially in a stop state, and it must
     be started before it can invoke the driver's <code>outputStart()</code>
     method. Drivers may also issue start to release a previous stop request.
     After starting the output thread, if the output queue is not empty, or
     after a new packet is added to the output queue, the output thread will
     wakeup and invoke the driver's <code>outputStart()</code> method.
-	@param options No options are currently defined, always pass zero.
+    @param options No options are currently defined, always pass zero.
     @result <code>kIOReturnSuccess</code> if start was successful,
     <code>kIOReturnNotAttached</code> if the network interface has detached
     from the network stack.
@@ -1273,29 +1274,29 @@ public:
     IOReturn         startOutputThread( IOOptionBits options = 0 );
 
 /*! @function signalOutputThread
-	@abstract Informs the output thread that driver has completed packet
+    @abstract Informs the output thread that driver has completed packet
     transmission.
-	@discussion A driver that supports the pull output model must call this
+    @discussion A driver that supports the pull output model must call this
     method after packet transmission is complete, and driver resources are
     available to <code>outputStart()</code> to handle additional packets.
     It is recommended to batch this call when retiring a group of output
     packets. This method will wake up the output thread if the output queue
     is not empty, and the output thread is not stopped.
-	@param options No options are currently defined, always pass zero.
+    @param options No options are currently defined, always pass zero.
 */
     void             signalOutputThread( IOOptionBits options = 0 );
 
 /*! @function flushOutputQueue
-	@abstract Flush all packets in the interface output queue.
-	@discussion A driver that supports the pull output model can use this
+    @abstract Flush all packets in the interface output queue.
+    @discussion A driver that supports the pull output model can use this
     method to free all packets currently held in the interface output queue.
-	@param options No options are currently defined, always pass zero.
+    @param options No options are currently defined, always pass zero.
 */
     void             flushOutputQueue( IOOptionBits options = 0 );
 
 /*! @function dequeueOutputPackets
-	@abstract Dequeue packets from the interface output queue.
-	@discussion A driver that supports the output pull-model will typically
+    @abstract Dequeue packets from the interface output queue.
+    @discussion A driver that supports the output pull-model will typically
     call this method from <code>outputStart()</code> after it has calculated
     the maximum number of packets that can be dequeued based on available
     resources. Drivers should not dequeue more packets than they can accept
@@ -1312,13 +1313,13 @@ public:
     be greater than zero.
     @param packetHead Pointer to the first packet that was dequeued.
     @param packetTail Optional pointer to the last packet that was dequeued.
-	@param packetCount Optional pointer to store the number of packets that
+    @param packetCount Optional pointer to store the number of packets that
     was dequeued.
-	@param packetBytes Optional pointer to store the total length of packets
+    @param packetBytes Optional pointer to store the total length of packets
     that was dequeued. The length of each packet is given by
     <code>mbuf_pkthdr_len()</code>.
-	@result <code>kIOReturnSuccess</code> if at least one packet was dequeued,
-	<code>kIOReturnBadArgument</code> if an argument was invalid,
+    @result <code>kIOReturnSuccess</code> if at least one packet was dequeued,
+    <code>kIOReturnBadArgument</code> if an argument was invalid,
     <code>kIOReturnNoFrames</code> if the queue is empty, or the queue is
     limiting the transmit rate.
 */
@@ -1332,7 +1333,7 @@ public:
     OSMetaClassDeclareReservedUsed(IONetworkInterface, 8);
 
 /*! @function dequeueOutputPacketsWithServiceClass
-	@abstract Dequeue packets of a particular service class from the interface
+    @abstract Dequeue packets of a particular service class from the interface
     output queue.
     @discussion See <code>dequeueOutputPackets</code>.
     @param maxCount The maximum number of packets to dequeue. This value must
@@ -1341,13 +1342,13 @@ public:
     Only packets belonging to the specified service class will be dequeued.
     @param packetHead Pointer to the first packet that was dequeued.
     @param packetTail Optional pointer to the last packet that was dequeued.
-	@param packetCount Optional pointer to store the number of packets that
+    @param packetCount Optional pointer to store the number of packets that
     was dequeued.
-	@param packetBytes Optional pointer to store the total length of packets
+    @param packetBytes Optional pointer to store the total length of packets
     that was dequeued. The length of each packet is given by
     <code>mbuf_pkthdr_len()</code>.
-	@result <code>kIOReturnSuccess</code> if at least one packet was dequeued,
-	<code>kIOReturnBadArgument</code> if an argument was invalid,
+    @result <code>kIOReturnSuccess</code> if at least one packet was dequeued,
+    <code>kIOReturnBadArgument</code> if an argument was invalid,
     <code>kIOReturnNoFrames</code> if the queue is empty, no packet belongs to
     the service class or the queue is limiting the transmit rate.
 */
@@ -1362,15 +1363,15 @@ public:
     OSMetaClassDeclareReservedUsed(IONetworkInterface, 9);
 
 /*! @function dequeueOutputPacketsWithMaxSize
-	@abstract Dequeue packets with a byte size constraint.
+    @abstract Dequeue packets with a byte size constraint.
     @discussion See <code>dequeueOutputPackets</code>.
     @param maxSize The maximum byte size of the dequeued packet chain.
     This value must be greater than zero.
     @param packetHead Pointer to the first packet that was dequeued.
     @param packetTail Optional pointer to the last packet that was dequeued.
-	@param packetCount Optional pointer to store the number of packets that
+    @param packetCount Optional pointer to store the number of packets that
     was dequeued.
-	@param packetBytes Optional pointer to store the total length of packets
+    @param packetBytes Optional pointer to store the total length of packets
     that was dequeued. The length of each packet is given by
     <code>mbuf_pkthdr_len()</code>.
 */
@@ -1429,14 +1430,14 @@ public:
     set. This is the preferred interface to queue and submit an input packet,
     and is functionally equivalent to calling <code>inputPacket</code> with
     the <code>kInputOptionQueuePacket</code> option. Submitting a chain of
-    packets is not supported. 
+    packets is not supported.
     @param packet The input packet. Caller ceases ownership of the packet
     regardless of the return value.
     @param queue Defaults to zero which specifies the interface input queue.
     To handoff a packet during input polling, pass the queue provided by the
     poller.
-	@param options No options are currently defined, always pass zero.
-	@result <code>kIOReturnSuccess</code> if packet was added to the queue,
+    @param options No options are currently defined, always pass zero.
+    @result <code>kIOReturnSuccess</code> if packet was added to the queue,
     or an error code otherwise.
 */
     virtual IOReturn enqueueInputPacket(
@@ -1482,8 +1483,8 @@ public:
     otherwise an appropriate error code.
 */
     IOReturn reportDatapathIssue(
-                            IOReturn 	issue,
-                            void * 		data   = 0,
+                            IOReturn     issue,
+                            void *         data   = 0,
                             IOByteCount length = 0 );
 
 /*! @function setPacketPollingParameters
@@ -1529,3 +1530,4 @@ public:
 #endif /* __cplusplus */
 #endif /* KERNEL */
 #endif /* !_IONETWORKINTERFACE_H */
+
