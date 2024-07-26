@@ -2,13 +2,13 @@
  * Copyright (c) 1998-2008 Apple Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
- * 
+ *
  * The contents of this file constitute Original Code as defined in and
  * are subject to the Apple Public Source License Version 1.1 (the
  * "License").  You may not use this file except in compliance with the
  * License.  Please obtain a copy of the License at
  * http://www.apple.com/publicsource and read it before using this file.
- * 
+ *
  * This Original Code and all software distributed under the License are
  * distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
@@ -16,7 +16,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.  Please see the
  * License for the specific language governing rights and limitations
  * under the License.
- * 
+ *
  * @APPLE_LICENSE_HEADER_END@
  */
 
@@ -30,25 +30,25 @@
 
 /*! @defined kIOVendor
     @abstract A property of IONetworkController objects.
-    @discussion The kIOVendor property is a property of IONetworkController objects.  It has an OSString value 	that describes the vendor of the network controller. */
+    @discussion The kIOVendor property is a property of IONetworkController objects.  It has an OSString value     that describes the vendor of the network controller. */
 
 #define kIOVendor                "IOVendor"
 
 /*! @defined kIOModel
     @abstract A property of IONetworkController objects.
-    @discussion The kIOModel property is a property of IONetworkController objects.  It has an OSString value that 	describes the model of the network controller. */
+    @discussion The kIOModel property is a property of IONetworkController objects.  It has an OSString value that     describes the model of the network controller. */
 
 #define kIOModel                 "IOModel"
 
 /*! @defined kIORevision
     @abstract A property of IONetworkController objects.
-    @discussion The kIORevision property is a property of IONetworkController objects.  It has an OSString value 	that describes the revision level of the network controller. */
+    @discussion The kIORevision property is a property of IONetworkController objects.  It has an OSString value     that describes the revision level of the network controller. */
 
 #define kIORevision              "IORevision"
 
 /*! @defined kIOFeatures
     @abstract A property of IONetworkController objects.
-    @discussion The kIOFeatures property is a property of IONetworkController objects. It has an OSNumber value 	that describes generic features defined by IONetworkController that are supported by the
+    @discussion The kIOFeatures property is a property of IONetworkController objects. It has an OSNumber value     that describes generic features defined by IONetworkController that are supported by the
         network controller. */
 
 #define kIOFeatures              "IOFeatures"
@@ -99,7 +99,7 @@
     @abstract A property of IONetworkController objects.
     @discussion The kIOLinkSpeed property is a property of IONetworkController
         objects. It has an OSNumber value that describes the speed of the
-    	link established over the active medium in bits per second. */
+        link established over the active medium in bits per second. */
 
 #define kIOLinkSpeed             "IOLinkSpeed"
 
@@ -163,7 +163,7 @@
 #define kIONetworkFilterGroup    "IONetworkFilterGroup"
 
 /*! @enum StandardPacketFilters
-    @abstract All standard packet filters. 
+    @abstract All standard packet filters.
     @discussion Each filter will allow the reception of certain class of packets
         depending on its destination MAC address.
     @constant kIOPacketFilterUnicast Reception of unicast packets.
@@ -189,7 +189,7 @@ enum {
     @abstract Feature flags returned by the getFeatures() method.
     @constant kIONetworkFeatureNoBSDWait Set this bit in the value
         returned by getFeatures() to disable the automatic wait for
-        "IOBSD" resource by the IONetworkController::start() method. 
+        "IOBSD" resource by the IONetworkController::start() method.
     @constant kIONetworkFeatureHardwareVlan Set this bit in the value
         returned by getFeatures() to indicate the controller supports hardware
         stripping and stuffing of 802.1q vlan tags.  If the controller supports
@@ -198,18 +198,18 @@ enum {
         should use setVlanTag() to provide the tag information out of band.
     @constant kIONetworkFeatureSoftwareVlan Set this bit in the value
         returned by getFeatures() to indicate that the controller can support software
-        based vlan by transmitting and receiving packets 4 bytes longer that normal. 
+        based vlan by transmitting and receiving packets 4 bytes longer that normal.
     @constant kIONetworkFeatureMultiPages Set this bit if the driver is
-	capable of handling packets coming down from the network stack that
-	reside in virtually, but not in physically contiguous span of the
-	external mbuf clusters.  In this case, the data area of a packet in
-	the external mbuf cluster might cross one or more physical pages that
-	are disjoint, depending on the interface MTU and the packet size.
-	Such a use of larger than system page size clusters by the network
-	stack is done for better system efficiency.  Drivers that utilize the
-	IOMbufNaturalMemoryCursor with the getPhysicalSegmentsWithCoalesce
-	interfaces and enumerate the list of vectors should set this flag
-	for possible gain in performance during bulk data transfer.
+    capable of handling packets coming down from the network stack that
+    reside in virtually, but not in physically contiguous span of the
+    external mbuf clusters.  In this case, the data area of a packet in
+    the external mbuf cluster might cross one or more physical pages that
+    are disjoint, depending on the interface MTU and the packet size.
+    Such a use of larger than system page size clusters by the network
+    stack is done for better system efficiency.  Drivers that utilize the
+    IOMbufNaturalMemoryCursor with the getPhysicalSegmentsWithCoalesce
+    interfaces and enumerate the list of vectors should set this flag
+    for possible gain in performance during bulk data transfer.
     @constant kIONetworkFeatureTSOIPv4 Set this bit to advertise support
         for TCP/IPv4 segmentation offload.
     @constant kIONetworkFeatureTSOIPv6 Set this bit to advertise support
@@ -232,7 +232,8 @@ enum {
     kIONetworkFeatureTSOIPv6                    = 0x020,
     kIONetworkFeatureTransmitCompletionStatus   = 0x040,
     kIONetworkFeatureHWTimeStamp                = 0x080,
-    kIONetworkFeatureSWTimeStamp                = 0x100
+    kIONetworkFeatureSWTimeStamp                = 0x100,
+    kIONetworkFeatureLRO                        = 0x200
 };
 
 #ifdef KERNEL
@@ -271,7 +272,7 @@ enum {
     kIOPacketBufferAlign32  = 32
 };
 
-/*!	@const gIONetworkFilterGroup
+/*!    @const gIONetworkFilterGroup
     @discussion gIONetworkFilterGroup is an OSSymbol object that contains
         the name of the standard network filter group as defined by
         kIONetworkFilterGroup. */
@@ -279,11 +280,11 @@ enum {
 extern const OSSymbol *  gIONetworkFilterGroup;
 
 /*! @class IONetworkController
-    @abstract Implements the framework for a generic 
+    @abstract Implements the framework for a generic
     network controller.
     @discussion A subclass of IONetworkController must provide
     additional functionality specific for a particular networking type.
-    In addition, the driver must implement (override) a basic set of 
+    In addition, the driver must implement (override) a basic set of
     hardware dependent methods to create a working driver.
 
     IONetworkController attaches itself to the data link layer (DLIL) via
@@ -297,19 +298,20 @@ extern const OSSymbol *  gIONetworkFilterGroup;
     event source to an IOWorkLoop object. All commands sent from the
     interface object are handled through the IOCommandGate object,
     which will serialize access to the controller. Outbound packets sent
-    from the interface to the controller have no implicit serialization. 
+    from the interface to the controller have no implicit serialization.
     Drivers must implement an output function that is thread safe, or use
     an IOOutputQueue object which will provide a serialization model.
 
-	Note: IONetworkController internally uses some private messaging constants
-	in the sys_iokit | sub_iokit_networking range defined in 
-	"IONetworkControllerPrivate.h".	If you create a client for your controller
-	(for example an IOUserClient), and it overrides the IOService::message 
-	method, your client may receive these messages.  It should ignore these 
-	messages and pass them to super::message() 	
+    Note: IONetworkController internally uses some private messaging constants
+    in the sys_iokit | sub_iokit_networking range defined in
+    "IONetworkControllerPrivate.h".    If you create a client for your controller
+    (for example an IOUserClient), and it overrides the IOService::message
+    method, your client may receive these messages.  It should ignore these
+    messages and pass them to super::message()
     */
 
-class IONetworkController : public IOService
+
+class __exported IONetworkController : public IOService
 {
     OSDeclareAbstractStructors( IONetworkController )
 
@@ -338,7 +340,7 @@ private:
     struct ExpansionData { };
     /*! @var reserved
         Reserved for future use.  (Internal use only)  */
-    ExpansionData *	    _reserved;
+    ExpansionData *        _reserved;
 
 
     bool _broadcastEvent(UInt32 type, void * data = 0);
@@ -375,15 +377,15 @@ public:
     is called.
     @param properties A dictionary object containing a property table
         associated with this instance.
-    @result Returns true on success, false otherwise. 
-*/ 
+    @result Returns true on success, false otherwise.
+*/
 
     virtual bool init(OSDictionary * properties) APPLE_KEXT_OVERRIDE;
 
 /*! @function start
     @abstract Starts the network controller.
     @discussion After the controller driver has successfully matched
-    to a provider, this method is called to start the network controller. 
+    to a provider, this method is called to start the network controller.
     IONetworkController will allocate resources and gather controller
     properties in its implementation. No I/O will be performed until
     the subclass tries to attach a client object. A driver must override
@@ -397,7 +399,7 @@ public:
     handle client requests.
     @param provider The provider that the controller was matched
     (and attached) to.
-    @result Returns true on success, false otherwise. 
+    @result Returns true on success, false otherwise.
 */
 
     virtual bool start(IOService * provider) APPLE_KEXT_OVERRIDE;
@@ -443,7 +445,7 @@ public:
 
 /*! @function executeCommand
     @abstract Makes a C function call through the command gate.
-    @discussion This method makes a call to a C function that will be synchronized 
+    @discussion This method makes a call to a C function that will be synchronized
     with the workloop thread, and any other threads that are called
     with the workloop's gate closed.
     @param client The client requesting the action. This parameter is not
@@ -454,7 +456,7 @@ public:
     @param param1 Action parameter 1.
     @param param2 Action parameter 2.
     @param param3 Action parameter 3.
-    @result Returns the value returned by the action. 
+    @result Returns the value returned by the action.
 */
 
     virtual IOReturn executeCommand(OSObject * client,
@@ -490,7 +492,7 @@ public:
     @param mbuf_t An mbuf chain containing the output packet to be sent on
     the network.
     @param param A parameter provided by the caller.
-    @result Returns a return code defined by the caller. 
+    @result Returns a return code defined by the caller.
 */
 
     virtual UInt32 outputPacket(mbuf_t m, void * param);
@@ -524,16 +526,16 @@ public:
 
 /*! @function getSelectedMedium
     @abstract Gets the current selected medium.
-    @discussion If the driver has previously called setSelectedMedium() 
+    @discussion If the driver has previously called setSelectedMedium()
     to indicate its current media selection, then this method will return
     that medium object. Otherwise, the driver's property table is
     consulted and a default medium property is examined, and the
     corresponding entry in the medium dictionary is returned.
-    @result Returns the current selected medium, the default medium, or 0. 
+    @result Returns the current selected medium, the default medium, or 0.
 */
 
     virtual const IONetworkMedium * getSelectedMedium() const;
-	const IONetworkMedium * getCurrentMedium() const;
+    const IONetworkMedium * getCurrentMedium() const;
 
 /*! @function getMediumDictionary
     @abstract Returns the medium dictionary published by the driver.
@@ -541,7 +543,7 @@ public:
     through publishMediumDictionary(). Use copyMediumDictionary() to
     create and get a copy of the medium dictionary.
     @result Returns the published medium dictionary, or 0 if the driver has not
-    yet published a medium dictionary through publishMediumDictionary(). 
+    yet published a medium dictionary through publishMediumDictionary().
 */
 
     virtual const OSDictionary * getMediumDictionary() const;
@@ -559,9 +561,9 @@ public:
     virtual OSDictionary * copyMediumDictionary() const;
 
 /*! @function getOutputHandler
-    @abstract Gets the address of the method designated to handle output 
+    @abstract Gets the address of the method designated to handle output
     packets for the network controller.
-    @result Returns a pointer to the outputPacket() method. 
+    @result Returns a pointer to the outputPacket() method.
 */
 
     virtual IOOutputAction getOutputHandler() const;
@@ -569,7 +571,7 @@ public:
 /*! @function doEnable
     @abstract Makes a synchronized call to enable() through executeCommand().
     @discussion Do not use this method, it may be removed in the future.
-    See enable(). 
+    See enable().
 */
 
     virtual IOReturn doEnable(IOService * client);
@@ -577,7 +579,7 @@ public:
 /*! @function doDisable
     @abstract Makes a synchronized call to disable() through executeCommand().
     @discussion Do not use this method, it may be removed in the future.
-    See disable(). 
+    See disable().
 */
 
     virtual IOReturn doDisable(IOService * client);
@@ -590,21 +592,21 @@ public:
     commands handled through executeCommand(). Subclasses that need an
     IOCommandGate should try to reuse the object returned by this method,
     rather than creating a new instance. See IOCommandGate documentation.
-    @result Returns the IOCommandGate object created by IONetworkController. 
+    @result Returns the IOCommandGate object created by IONetworkController.
 */
 
     virtual IOCommandGate * getCommandGate() const;
 
 /*! @function getHardwareAddress
     @abstract Gets the network controller's permanent hardware/station
-    address. 
+    address.
     @discussion This method call is synchronized by the workloop's gate.
     @param addr The buffer where the controller's hardware address should
            be stored.
     @param inOutAddrBytes The size of the address buffer provided by the
            client, and replaced by this method with the actual size of
            the hardware address in bytes.
-    @result Returns kIOReturnSuccess on success, or an error otherwise. 
+    @result Returns kIOReturnSuccess on success, or an error otherwise.
 */
 
     virtual IOReturn getHardwareAddress(void *   addr,
@@ -612,13 +614,13 @@ public:
 
 /*! @function setHardwareAddress
     @abstract Sets or changes the station address used by the network
-    controller. 
+    controller.
     @discussion This method call is synchronized by the workloop's gate.
     @param addr The buffer containing the hardware address provided by
     the client.
     @param addrBytes The size of the address buffer provided by the
     client in bytes.
-    @result Returns kIOReturnSuccess on success, or an error otherwise. 
+    @result Returns kIOReturnSuccess on success, or an error otherwise.
 */
 
     virtual IOReturn setHardwareAddress(const void * addr,
@@ -638,7 +640,7 @@ public:
     synchronized by the workloop's gate.
     @param client The client object requesting the enable.
     @result Returns the return value from the overloaded enable() method, or
-    kIOReturnBadArgument if the client type is unknown. 
+    kIOReturnBadArgument if the client type is unknown.
 */
 
     virtual IOReturn enable(IOService * client);
@@ -668,7 +670,7 @@ public:
     @param maxSize The new maximum packet size.
     @result Returns kIOReturnUnsupported. Drivers may override this method
     and return either kIOReturnSuccess to indicate that the new size
-    was accepted and is in effect, or an error code to indicate failure. 
+    was accepted and is in effect, or an error code to indicate failure.
 */
 
     virtual IOReturn setMaxPacketSize(UInt32 maxSize);
@@ -676,7 +678,7 @@ public:
 /*! @function getMaxPacketSize
     @abstract Gets the maximum packet size supported by the controller.
     @param maxSize Pointer to the return value.
-    @result Returns kIOReturnSuccess on success, or an error code otherwise. 
+    @result Returns kIOReturnSuccess on success, or an error code otherwise.
 */
 
     virtual IOReturn getMaxPacketSize(UInt32 * maxSize) const = 0;
@@ -684,7 +686,7 @@ public:
 /*! @function getMinPacketSize
     @abstract Gets the minimum packet size supported by the controller.
     @param minSize Pointer to the return value.
-    @result Returns kIOReturnSuccess on success, or an error code otherwise. 
+    @result Returns kIOReturnSuccess on success, or an error code otherwise.
 */
 
     virtual IOReturn getMinPacketSize(UInt32 * minSize) const = 0;
@@ -700,7 +702,7 @@ public:
     represents the selection chosen by the client.
     @result Returns kIOReturnUnsupported. Drivers may override this method and
     return kIOReturnSuccess if the selection was successful,
-    or an error code otherwise. 
+    or an error code otherwise.
 */
 
     virtual IOReturn selectMedium(const IONetworkMedium * medium);
@@ -720,22 +722,22 @@ public:
     @result Returns the return from selectMedium() if a matching entry was found
     from the medium dictionary. Returns kIOReturnUnsupported if a medium
     dictionary does not exist, or kIOReturnBadArgument if the name given
-    does not match any entry in the medium dictionary. 
+    does not match any entry in the medium dictionary.
 */
 
     virtual IOReturn selectMediumWithName(const OSSymbol * mediumName);
 
 /*! @function getPacketFilters
-    @abstract Gets the set of packet filters supported by the network 
+    @abstract Gets the set of packet filters supported by the network
     controller for the given filter group.
     @discussion A subclass must implement this method and report the
     set of filters that are supported for the given filter group.
     This method call is synchronized by the workloop's gate.
     @param group The name of the filter group.
     @param filters Pointer to the mask of supported filters returned by
-    	this method.
+        this method.
     @result Returns kIOReturnSuccess on success, or an error to indicate a
-    failure to discover the set of supported filters. 
+    failure to discover the set of supported filters.
 */
 
     virtual IOReturn getPacketFilters(const OSSymbol * group,
@@ -754,7 +756,7 @@ public:
     @param aFilter The filter to enable.
     @param enabledFilters All filters currently enabled by the client.
     @param options Optional flags for the enable request.
-    @result Returns kIOReturnSuccess on success, or an error otherwise. 
+    @result Returns kIOReturnSuccess on success, or an error otherwise.
 */
 
     virtual IOReturn enablePacketFilter(const OSSymbol * group,
@@ -773,7 +775,7 @@ public:
     @param aFilter The filter to disable.
     @param enabledFilters All filters currently enabled by the client.
     @param options Optional flags for the disable request.
-    @result Returns kIOReturnSuccess on success, or an error otherwise. 
+    @result Returns kIOReturnSuccess on success, or an error otherwise.
 */
 
     virtual IOReturn disablePacketFilter(const OSSymbol * group,
@@ -784,7 +786,7 @@ public:
 /*! @function getOutputQueue
     @abstract Gets the IOOutputQueue object created by createOutputQueue().
     @result Returns a reference to the output queue object created by
-    createOutputQueue(). 
+    createOutputQueue().
 */
 
     virtual IOOutputQueue * getOutputQueue() const;
@@ -799,7 +801,7 @@ public:
     subject to the constraints reported here.
     @param constraints A pointer to an IOPacketBufferConstraints
     structure that this method is expected to initialize.
-    See IOPacketBufferConstraints structure definition. 
+    See IOPacketBufferConstraints structure definition.
 */
 
     virtual void getPacketBufferConstraints(
@@ -817,7 +819,7 @@ public:
     in order to convert the mbuf to a physical address scatter-gather list.
     @param size The minimum size of the data buffer for the mbuf
     packet allocated.
-    @result Returns an mbuf packet, or 0 if allocation failed. 
+    @result Returns an mbuf packet, or 0 if allocation failed.
 */
 
     virtual mbuf_t allocatePacket(UInt32 size);
@@ -829,7 +831,7 @@ public:
     @param m The source packet.
     @param size The number of bytes to copy. If set to 0, then the
     entire data buffer from the source packet is copied.
-    @result Returns a new packet containing the same data as the source packet. 
+    @result Returns a new packet containing the same data as the source packet.
 */
 
     virtual mbuf_t copyPacket(const mbuf_t m, UInt32 size = 0);
@@ -865,7 +867,7 @@ public:
         that the existing packet was replaced, or false to indicate that the
         existing packet was not replaced, and a copy was created.
     @result Returns a replacement or a copy of the existing packet, or 0 if packet
-    allocation failed. 
+    allocation failed.
 */
 
     virtual mbuf_t replaceOrCopyPacket(mbuf_t * mp,
@@ -883,7 +885,7 @@ public:
     provided to this function will be queued on the free packet queue.
     A subsequent call to releaseFreePackets() will release all queued
     packets by making a single BSD function call. Without the kDelayFree
-    option, the packet provided will be released immediately. 
+    option, the packet provided will be released immediately.
 */
 
     virtual void freePacket(mbuf_t, IOOptionBits options = 0);
@@ -893,7 +895,7 @@ public:
     @discussion The free packet queue is not protected by a lock. This
     function must be called in a single-threaded manner with respect to
     all calls to freePacket() with the kDelayFree option set.
-    @result Returns the number of packets queued and released. 
+    @result Returns the number of packets queued and released.
 */
 
     virtual UInt32 releaseFreePackets();
@@ -923,11 +925,11 @@ public:
     to allow the protocol stacks to calculate and verify the final checksum.
     This type of checksum is not currently supported on the output path.
     @constant kChecksumTCPSum16 The hardware has a simple checksum engine
-    that can perform a TCP style ones complement sum of 16-bit words over 
+    that can perform a TCP style ones complement sum of 16-bit words over
     a certain range of bytes in a packet. The hardware does not have the
     ability to scan for IP or TCP headers, and the driver must pass/get
     additional parameter(s) to or from the protocol stack to coordinate
-    the checksumming effort. 
+    the checksumming effort.
 */
 
     enum {
@@ -954,12 +956,12 @@ public:
     @param checksumFamily A value that specifies the checksum family.
     @param isOutput Set to true to query the support for checksum insertion on
     output packets, or false to query the support for checksum verification
-    on input packets. Controllers that have symmetric hardware checksum support 
+    on input packets. Controllers that have symmetric hardware checksum support
     can return a fixed checksum mask value, and ignore this argument.
     @result Default return is kIOReturnUnsupported. Controllers that override
     this method must return kIOReturnSuccess. Any other return value will be
     interpretated as a lack of checksum support, regardless of the value
-    returned through the first argument. 
+    returned through the first argument.
 */
 
     virtual IOReturn getChecksumSupport( UInt32 * checksumMask,
@@ -987,7 +989,7 @@ public:
     @param param0 Optional parameter 0, defaults to 0.
     @param param1 Optional parameter 1, defaults to 0.
     @result Returns true if the checksum family is valid and the packet has been
-    encoded with the checksum result provided, false otherwise. 
+    encoded with the checksum result provided, false otherwise.
 */
 
     virtual bool setChecksumResult( mbuf_t  packet,
@@ -1009,7 +1011,7 @@ public:
     @param demandMask A mask of all checksums that the hardware must compute
     and insert into the appropriate checksum fields in the packet.
     @param param0 Optional parameter 0, defaults to 0.
-    @param param1 Optional parameter 1, defaults to 0. 
+    @param param1 Optional parameter 1, defaults to 0.
 */
 
     virtual void getChecksumDemand( const mbuf_t packet,
@@ -1043,7 +1045,7 @@ public:
 
     @param mediumDict A dictionary of IONetworkMedium objects.
     @result Returns true if the dictionary is valid, and was successfully
-    exported to the property table, false otherwise. 
+    exported to the property table, false otherwise.
 */
 
     virtual bool publishMediumDictionary(const OSDictionary * mediumDict);
@@ -1058,7 +1060,7 @@ public:
     @param medium A medium object representing the current selection.
     @result Returns true if the property table update was successful,
     false if the update failed, or if the medium provided does not match
-    any entry from the published medium dictionary. 
+    any entry from the published medium dictionary.
 */
 
     virtual bool setSelectedMedium(const IONetworkMedium * medium);
@@ -1073,14 +1075,14 @@ public:
     @param status Link status bits.
            See IONetworkMedium for the definition of the link status bits.
     @param activeMedium An object in the published medium dictionary
-    	   that represents the active medium. This may not be the same as
-    	   the selected medium. Set this to 0 if the link is inactive.
+           that represents the active medium. This may not be the same as
+           the selected medium. Set this to 0 if the link is inactive.
     @param speed Link speed in units of bits per second. If zero, then
            the link speed is taken from the medium object provided.
     @param data An OSData containing any additional link parameter that
            the driver wishes to publish to the registry.
     @result Returns true if all link properties were successfully updated,
-    false otherwise. 
+    false otherwise.
 */
 
     virtual bool setLinkStatus(
@@ -1097,7 +1099,7 @@ public:
     before system shutdown or restart. This implementation is synchronous and can
     block before calling <code>IOService::systemWillShutdown</code> and return.
     @param specifier
-	<code>kIOMessageSystemWillPowerOff</code> or <code>kIOMessageSystemWillRestart</code>.
+    <code>kIOMessageSystemWillPowerOff</code> or <code>kIOMessageSystemWillRestart</code>.
     @see //apple_ref/cpp/instm/IOService/systemWillShutdown/void/(IOOptionBits) IOService::systemWillShutdown
 */
 
@@ -1113,7 +1115,7 @@ protected:
 /*! @function free
     @abstract Frees the IONetworkController object.
     @discussion Frees the IONetworkController object by releasing all
-    allocated resources, followed by a call to super::free(). 
+    allocated resources, followed by a call to super::free().
 */
 
     virtual void free() APPLE_KEXT_OVERRIDE;
@@ -1142,7 +1144,7 @@ protected:
     subclass that wants to create a workloop, will do so before its
     first use.
     @result Returns true to indicate success, false otherwise. Returning false
-    will fail IONetworkController::start(). 
+    will fail IONetworkController::start().
 */
 
     virtual bool createWorkLoop();
@@ -1158,7 +1160,7 @@ protected:
     is called multiple times. This method call is synchronized by the
     workloop's gate.
     @result Returns kIOReturnSuccess on success, or an error code otherwise.
-        Returning an error will fail the client attach. 
+        Returning an error will fail the client attach.
 */
 
     virtual IOReturn prepare();
@@ -1182,7 +1184,7 @@ protected:
     initiated the command.
     @result Returns the command client. If the caller is not running on the
     workloop thread, or if the thread does not have the workloop's gate
-    closed, then 0 is returned. 
+    closed, then 0 is returned.
 */
 
     virtual OSObject * getCommandClient() const;
@@ -1195,7 +1197,7 @@ protected:
     @param client The client that is attempting to open the controller.
     @param options Not used. See IOService.
     @param argument Not used. See IOService.
-    @result Returns true to accept the client open, false to refuse it. 
+    @result Returns true to accept the client open, false to refuse it.
 */
 
     virtual bool handleOpen(IOService *  client,
@@ -1208,7 +1210,7 @@ protected:
     calls this method with the arbitration lock held. Subclasses
     should not override this method.
     @param client The client that is closing the controller.
-    @param options Not used. See IOService. 
+    @param options Not used. See IOService.
 */
 
     virtual void handleClose(IOService * client, IOOptionBits options) APPLE_KEXT_OVERRIDE;
@@ -1218,7 +1220,7 @@ protected:
     @discussion This method is always called by IOService with the
     arbitration lock held. Subclasses should not override this method.
     @result Returns true if the specified client, or any client if none (0) is
-    specified, presently has an open on this object. 
+    specified, presently has an open on this object.
 */
 
     virtual bool handleIsOpen(const IOService * client) const APPLE_KEXT_OVERRIDE;
@@ -1233,7 +1235,7 @@ protected:
     is synchronized by the workloop's gate.
     @param interface The interface client object that requested the enable.
     @result Returns kIOReturnUnsupported. Drivers that override this method must
-    return kIOReturnSuccess on success, or an error code otherwise. 
+    return kIOReturnSuccess on success, or an error code otherwise.
 */
 
     virtual IOReturn enable(IONetworkInterface * interface);
@@ -1246,7 +1248,7 @@ protected:
     This method call is synchronized by the workloop's gate.
     @param interface The interface object that requested the disable.
     @result kIOReturnUnsupported. Drivers that override this method must
-    return Returns kIOReturnSuccess on success, or an error code otherwise. 
+    return Returns kIOReturnSuccess on success, or an error code otherwise.
 */
 
     virtual IOReturn disable(IONetworkInterface * interface);
@@ -1269,7 +1271,7 @@ protected:
     quiet before assigning BSD names to all interfaces. Drivers that are unable
     to trigger interface matching synchronously from their <code>start()</code>
     method should instead call <code>adjustBusy</code> to manually increment
-    the <code>busyState</code>, then followed by a <code>busyState</code> 
+    the <code>busyState</code>, then followed by a <code>busyState</code>
     decrement after attaching and registering the interface, or after a
     reasonable timeout.
     @param interface Upon success (return value is <code>true</code>), the
@@ -1277,7 +1279,7 @@ protected:
     @param doRegister If true, start interface matching before returning.
     Drivers can pass <code>false</code> to postpone interface matching, then
     register the interface when ready.
-    @result Returns <code>true</code> on success, <code>false</code> otherwise. 
+    @result Returns <code>true</code> on success, <code>false</code> otherwise.
 */
 
     virtual bool attachInterface(IONetworkInterface ** interface,
@@ -1287,8 +1289,8 @@ protected:
     @abstract Detaches an interface client object.
     @discussion This method will verify that the object provided is indeed
     an IONetworkInterface instance, and then call its terminate() method.
-    Note that an interface object will close and detach from its 
-    controller after the data link layer has removed all references to 
+    Note that an interface object will close and detach from its
+    controller after the data link layer has removed all references to
     all data structures exposed by the interface. The interface object
     should be released following this call.
     @param interface An interface object to be detached and terminated.
@@ -1307,7 +1309,7 @@ protected:
     interface object. For example, IOEthernetController's implementation
     will return an IOEthernetInterface object when createInterface() is
     called.
-    @result Returns a newly allocated and initialized interface object. 
+    @result Returns a newly allocated and initialized interface object.
 */
 
     virtual IONetworkInterface * createInterface() = 0;
@@ -1320,7 +1322,7 @@ protected:
     controller as a client.
     @param interface The interface object to be configured.
     @result Returns true if the operation was successful, false otherwise
-    (this will cause attachInterface() to fail and return 0). 
+    (this will cause attachInterface() to fail and return 0).
 */
 
     virtual bool configureInterface(IONetworkInterface * interface);
@@ -1335,7 +1337,7 @@ protected:
     this method and return a subclass of IOOutputQueue. IONetworkController
     will keep a reference to the queue created, and will release this
     object when IONetworkController is freed. Also see getOutputQueue().
-    @result Returns a newly allocated and initialized IOOutputQueue object. 
+    @result Returns a newly allocated and initialized IOOutputQueue object.
 */
 
     virtual IOOutputQueue * createOutputQueue();
@@ -1348,7 +1350,7 @@ protected:
     enable() and disable() methods that take an IOService argument.
     @param debugger The IOKernelDebugger client requesting the enable.
     @result Returns kIOReturnSuccess. Drivers must return kIOReturnSuccess
-    on success, or an error otherwise. 
+    on success, or an error otherwise.
 */
 
     virtual IOReturn enable(IOKernelDebugger * debugger);
@@ -1361,7 +1363,7 @@ protected:
     take an IOService argument.
     @param debugger The IOKernelDebugger client requesting the disable.
     @result Returns kIOReturnSuccess. Drivers must return kIOReturnSuccess
-    on success, or an error otherwise. 
+    on success, or an error otherwise.
 */
 
     virtual IOReturn disable(IOKernelDebugger * debugger);
@@ -1376,7 +1378,7 @@ protected:
     should be attached to each controller.
     @param debuggerP A handle that will return the new
            IOKernelDebugger object created.
-    @result Returns true on success, false otherwise. 
+    @result Returns true on success, false otherwise.
 */
 
     virtual bool attachDebuggerClient(IOKernelDebugger ** debuggerP);
@@ -1389,7 +1391,7 @@ protected:
     client should be released following this call.
     @param debugger The IOKernelDebugger object to be detached and
            terminated. If the argument provided is NULL or is not an
-           IOKernelDebugger, this method will return immediately. 
+           IOKernelDebugger, this method will return immediately.
 */
 
     virtual void detachDebuggerClient(IOKernelDebugger * debugger);
@@ -1397,7 +1399,7 @@ protected:
 /*! @function reserveDebuggerLock
     @abstract Takes the global debugger lock.
     @discussion This method should not be used. Instead, call the
-    lock() method provided by IOKernelDebugger. 
+    lock() method provided by IOKernelDebugger.
 */
 
     void reserveDebuggerLock();
@@ -1405,7 +1407,7 @@ protected:
 /*! @function releaseDebuggerLock
     @abstract Releases the global debugger lock.
     @discussion This method should not be used. Instead, call the
-    unlock() method provided by IOKernelDebugger. 
+    unlock() method provided by IOKernelDebugger.
 */
 
     void releaseDebuggerLock();
@@ -1427,8 +1429,8 @@ protected:
            recorded. Set this to zero if no packets were received during
            the timeout interval.
     @param timeout The maximum amount of time in milliseconds to poll for
-           a packet to arrive before this method must return. 
-*/ 
+           a packet to arrive before this method must return.
+*/
 
     virtual void receivePacket(void * pkt, UInt32 * pktSize, UInt32 timeout);
 
@@ -1445,7 +1447,7 @@ protected:
     attaches a debugger client must override this method.
     @param pkt Pointer to a transmit buffer containing the packet to be
         sent on the network.
-    @param pktSize The size of the transmit buffer in bytes. 
+    @param pktSize The size of the transmit buffer in bytes.
 */
 
     virtual void sendPacket(void * pkt, UInt32 pktSize);
@@ -1461,11 +1463,11 @@ protected:
     never block.
 
     The getDebuggerLinkStatus() method in IONetworkController is used as a placeholder
-    and always reports that the link is up. A driver that attaches a debugger client 
-    should override this method. The driver should do any setup required to make 
-    sure the link is available for use. Prior to sending or receiving data, KDP will call this 
-    function repeatedly until it indicates that the link is both valid and active 
-    (kIONetworkLinkValid | kIONetworkLinkActive). 
+    and always reports that the link is up. A driver that attaches a debugger client
+    should override this method. The driver should do any setup required to make
+    sure the link is available for use. Prior to sending or receiving data, KDP will call this
+    function repeatedly until it indicates that the link is both valid and active
+    (kIONetworkLinkValid | kIONetworkLinkActive).
 
     @result Link status bits. See IONetworkMedium for the definition of the link status bits.
 */
@@ -1484,10 +1486,10 @@ protected:
     The setDebuggerMode() method in IONetworkController is used as a placeholder
     and doesn't do anything. If a driver wishes to perform specific actions based upon whether
     or not the debugger is active or not, it should override this method. For example, drivers
-    may wish to alter power management settings or perform other chipset reconfigurations based 
+    may wish to alter power management settings or perform other chipset reconfigurations based
     upon the active debugger state.
 
-    @param active Set to true if entering KDP and false if leaving KDP. 
+    @param active Set to true if entering KDP and false if leaving KDP.
     @result Returns true on success and false otherwise.
 */
     virtual bool setDebuggerMode(bool active);
@@ -1509,7 +1511,7 @@ public:
 /*! @function attachAuxiliaryDataToPacket
     @abstract Attach family or driver specific data to a mbuf packet.
     @discussion Memory is allocated for the auxiliary data and attached to
-    the packet. The data provided is then copied to the allocated memory.    
+    the packet. The data provided is then copied to the allocated memory.
     Attaching auxiliary data to a packet which already has auxiliary data
     attached will fail. The existing auxiliary data must be detached from the
     packet and freed using <code>removeAuxiliaryDataFromPacket</code> before
@@ -1534,7 +1536,7 @@ public:
                         uint32_t        subFamily = 0 );
 
 /*! @function removeAuxiliaryDataFromPacket
-	@discussion Remove and free any driver auxiliary data associated with
+    @discussion Remove and free any driver auxiliary data associated with
     the packet.
     @param packet The mbuf packet to remove the auxiliary data from.
 */
@@ -1542,9 +1544,9 @@ public:
                         mbuf_t  packet );
 
 /*! @function outputStart
-	@abstract An indication to the driver to dequeue and transmit packets
+    @abstract An indication to the driver to dequeue and transmit packets
     waiting in the interface output queue.
-	@discussion A driver that supports the pull output model must override this
+    @discussion A driver that supports the pull output model must override this
     method, which will be called by a per-interface output thread when a packet
     is added to the interface output queue. In response, driver must verify that
     free transmit resources are available, then dequeue one or more packets by
@@ -1609,12 +1611,12 @@ public:
     pass the <code>pollQueue</code> argument to add the packet to the polling
     queue. This should continue until the maximum packet count is reached, or
     the driver runs out of input packets. The poller can be configured to call
-    this method on the driver's work loop context.     
+    this method on the driver's work loop context.
     @param interface The interface that is polling packets from the driver.
     @param maxCount The maximum number of packets that the poller can accept.
     @param pollQueue The polling queue that should be passed to
     <code>IONetworkInterface::enqueueInputPacket</code>. Do not cache or use
-    this pointer after the method returns. 
+    this pointer after the method returns.
     @param context The family will always pass zero. This can be used by the
     driver for calls originating from the driver. E.g. A driver may choose to
     unify polled-mode and interrupt-mode input packet handling and call this
@@ -1645,8 +1647,8 @@ public:
 */
     virtual IOReturn networkInterfaceNotification(
                         IONetworkInterface * interface,
-                        uint32_t 			 type,
-                        void * 				 argument );
+                        uint32_t              type,
+                        void *                  argument );
 
     OSMetaClassDeclareReservedUsed( IONetworkController,  5);
 #else   /* !__PRIVATE_SPI__ */
@@ -1655,8 +1657,41 @@ public:
     OSMetaClassDeclareReservedUnused( IONetworkController,  4);
     OSMetaClassDeclareReservedUnused( IONetworkController,  5);
 #endif  /* !__PRIVATE_SPI__ */
-    OSMetaClassDeclareReservedUnused( IONetworkController,  6);
-    OSMetaClassDeclareReservedUnused( IONetworkController,  7);
+    
+public:
+/*! @function allocatePacketNoWait
+    @abstract Allocates a packet with a data buffer that is larger than
+    or equal to the size specified, it will not aggressively wait for a mbuf to be
+    become available.
+    @discussion This method is identical to the 'allocatePacket' method except
+    that it will not block indefinitely if the requested 'mbuf_t' can't be allocated
+    immediately.
+    @param size The minimum size of the data buffer for the mbuf
+    packet allocated.
+    @result Returns an mbuf packet, or 0 if allocation failed.
+*/
+
+    virtual mbuf_t allocatePacketNoWait(UInt32 size);
+
+    OSMetaClassDeclareReservedUsed( IONetworkController,  6);
+
+/*! @function setHardwareAssists
+    @abstract Allow the Controller to be notified of a Hardware acceleration
+    configuration change.
+    @discussion Allow the Controller to be notified of a Hardware acceleration
+    configuration change.
+    @param hardwareAssists The assists that have changed.
+    @param hardwareAssistsMask The mask if the hardware assists thar need
+    a hardware reconfiguration
+    @result Default implementation returns <code>kIOReturnUnsupported</code>.
+    Driver should return <code>kIOReturnSuccess</code> if the notification
+    was handled.
+*/
+
+    virtual IOReturn setHardwareAssists( UInt32 hardwareAssists, UInt32 hardwareAssistsMask )
+
+    OSMetaClassDeclareReservedUsed( IONetworkController,  7);
+
     OSMetaClassDeclareReservedUnused( IONetworkController,  8);
     OSMetaClassDeclareReservedUnused( IONetworkController,  9);
     OSMetaClassDeclareReservedUnused( IONetworkController, 10);
@@ -1686,3 +1721,5 @@ public:
 #endif /* __cplusplus */
 #endif /* KERNEL */
 #endif /* !_IONETWORKCONTROLLER_H */
+
+
