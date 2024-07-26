@@ -2,13 +2,13 @@
  * Copyright (c) 1998-2008 Apple Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
- * 
+ *
  * The contents of this file constitute Original Code as defined in and
  * are subject to the Apple Public Source License Version 1.1 (the
  * "License").  You may not use this file except in compliance with the
  * License.  Please obtain a copy of the License at
  * http://www.apple.com/publicsource and read it before using this file.
- * 
+ *
  * This Original Code and all software distributed under the License are
  * distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
@@ -16,7 +16,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.  Please see the
  * License for the specific language governing rights and limitations
  * under the License.
- * 
+ *
  * @APPLE_LICENSE_HEADER_END@
  */
 
@@ -25,7 +25,7 @@
 
 /*! @defined kIOEthernetInterfaceClass
     @abstract The name of the
-        IOEthernetInterface class. 
+        IOEthernetInterface class.
 */
 
 #define kIOEthernetInterfaceClass     "IOEthernetInterface"
@@ -38,7 +38,7 @@
         group name, and an OSNumber describing the set of active filters for
         that group. Entries in this dictionary will mirror those in
         kIORequiredPacketFilters if the controller has reported success for
-        all filter change requests from the IOEthernetInterface object. 
+        all filter change requests from the IOEthernetInterface object.
 */
 
 #define kIOActivePacketFilters        "IOActivePacketFilters"
@@ -48,7 +48,7 @@
     @discussion The kIORequiredPacketFilters property has an OSDictionary value that describes the current
         set of required packet filters. Each entry in the dictionary is a
         key/value pair consisting of the filter group name, and an OSNumber
-        describing the set of required filters for that group. 
+        describing the set of required filters for that group.
 */
 
 #define kIORequiredPacketFilters      "IORequiredPacketFilters"
@@ -58,11 +58,11 @@
     @discussion The kIOMulticastAddressList property is an OSData object that describes the
         list of multicast addresses that are being used by the
         controller to match against the destination address of an
-        incoming frame. 
+        incoming frame.
 */
 
 #define kIOMulticastAddressList       "IOMulticastAddressList"
-#define kIOMulticastFilterData        kIOMulticastAddressList    
+#define kIOMulticastFilterData        kIOMulticastAddressList
 
 #ifdef KERNEL
 #ifdef __cplusplus
@@ -72,17 +72,18 @@
 #include <IOKit/network/IOEthernetStats.h>
 
 /*! @class IOEthernetInterface
-    @abstract The Ethernet interface object. 
+    @abstract The Ethernet interface object.
     @discussion An Ethernet controller driver,
     that is a subclass of IOEthernetController, will instantiate an object
     of this class when the driver calls the attachInterface() method.
     This interface object will then vend an Ethernet interface to DLIL,
     and manage the connection between the controller driver and the upper
     networking layers. Drivers will seldom need to subclass
-    IOEthernetInterface. 
+    IOEthernetInterface.
 */
 
-class IOEthernetInterface : public IONetworkInterface
+
+class __exported APPLE_KEXT_DEPRECATE IOEthernetInterface : public IONetworkInterface
 {
     OSDeclareDefaultStructors( IOEthernetInterface )
 
@@ -92,16 +93,16 @@ private:
     bool             _ctrEnabled;           // Is controller enabled?
     OSDictionary *   _supportedFilters;     // Controller's supported filters
     OSDictionary *   _requiredFilters;      // The required filters
-    OSDictionary *   _activeFilters;        // Currently active filters    
+    OSDictionary *   _activeFilters;        // Currently active filters
     bool             _controllerLostPower;  // true if controller is unusable
 
-    struct ExpansionData { 
+    struct ExpansionData {
         UInt32      altMTU;                 // track the physical mtu of controller
         UInt32      publishedFeatureID;     // id for published wake packet
         uint32_t    supportedWakeFilters;   // bitmask of supported wake filters
         OSNumber *  disabledWakeFilters;    // OSNumber of disabled wake filters
         uint64_t    wompEnabledAssertionID;
-	};
+    };
     /*! @var reserved
         Reserved for future use.  (Internal use only)  */
     ExpansionData *  _reserved;
@@ -134,13 +135,13 @@ private:
     int syncSIOCSIFMTU(IONetworkController * ctr, struct ifreq * ifr, bool);
     int syncSIOCGIFDEVMTU(IONetworkController * ctr, struct ifreq * ifr);
     int syncSIOCSIFLLADDR(IONetworkController * ctr, const char * lladdr, int len);
-	int syncSIOCSIFCAP(IONetworkController * ctr, struct ifreq * ifr);
-	void _fixupVlanPacket(mbuf_t, u_int16_t, int);
+    int syncSIOCSIFCAP(IONetworkController * ctr, struct ifreq * ifr);
+    void _fixupVlanPacket(mbuf_t, u_int16_t, int);
     void reportInterfaceWakeFlags(IONetworkController * ctr);
 
     static void handleEthernetInputEvent(thread_call_param_t param0, thread_call_param_t param1);
     static int performGatedCommand(void *, void *, void *, void *, void *);
-	static IOReturn enableFilter_Wrapper(
+    static IOReturn enableFilter_Wrapper(
         IOEthernetInterface *, IONetworkController *, const OSSymbol *, UInt32 , IOOptionBits);
 
 public:
@@ -151,7 +152,7 @@ public:
     structure is allocated.
     @param controller A network controller object that will service
     the interface object being initialized.
-    @result Returns true on success, false otherwise. 
+    @result Returns true on success, false otherwise.
 */
 
     virtual bool init( IONetworkController * controller ) APPLE_KEXT_OVERRIDE;
@@ -163,7 +164,7 @@ public:
     concatenating a string returned by this method, with an unique
     unit number assigned by IONetworkStack.
     @result Returns a pointer to a constant C string "en". Therefore, Ethernet
-    interfaces will be registered with BSD as en0, en1, etc. 
+    interfaces will be registered with BSD as en0, en1, etc.
 */
 
     virtual const char * getNamePrefix() const APPLE_KEXT_OVERRIDE;
@@ -173,7 +174,7 @@ protected:
 /*! @function free
     @abstract Frees the IOEthernetInterface instance.
     @discussion The memory allocated for the arpcom structure is released,
-    followed by a call to super::free(). 
+    followed by a call to super::free().
 */
 
     virtual void free() APPLE_KEXT_OVERRIDE;
@@ -189,7 +190,7 @@ protected:
     @param arg0 Command argument 0. Generally a pointer to an ifnet structure
         associated with the interface.
     @param arg1 Command argument 1.
-    @result Returns a BSD return value defined in bsd/sys/errno.h. 
+    @result Returns a BSD return value defined in bsd/sys/errno.h.
 */
 
     virtual SInt32 performCommand(IONetworkController * controller,
@@ -208,7 +209,7 @@ protected:
     @param controller The controller object that was opened.
     @result Returns true on success, false otherwise. Returning false will
     cause the controller to be closed, and any pending client opens to be
-    rejected. 
+    rejected.
 */
 
     virtual bool controllerDidOpen(IONetworkController * controller) APPLE_KEXT_OVERRIDE;
@@ -218,14 +219,14 @@ protected:
     controller.
     @discussion This method will simply call super to propagate the method
     call. This method is called with the arbitration lock held.
-    @param controller The controller that is about to be closed. 
+    @param controller The controller that is about to be closed.
 */
 
     virtual void controllerWillClose(IONetworkController * controller) APPLE_KEXT_OVERRIDE;
 
 
 /*! @function controllerWillChangePowerState
-    @abstract Handles a notification that the network controller 
+    @abstract Handles a notification that the network controller
     servicing this interface object is about to transition to a new power state.
     @discussion If the controller is about to transition to an unusable state,
     and it is currently enabled, then the disable() method on the controller is
@@ -237,7 +238,7 @@ protected:
     power state array that the controller is switching to.
     @param policyMaker A reference to the network controller's policy-maker,
     and is also the originator of this notification.
-    @result Always returns kIOReturnSuccess. 
+    @result Always returns kIOReturnSuccess.
 */
 
     virtual IOReturn controllerWillChangePowerState(
@@ -258,10 +259,10 @@ protected:
     power state array that the controller has switched to.
     @param policyMaker A reference to the network controller's policy-maker,
     and is also the originator of this notification.
-    @result Always returns kIOReturnSuccess. 
+    @result Always returns kIOReturnSuccess.
 */
 
-    virtual IOReturn controllerDidChangePowerState( 
+    virtual IOReturn controllerDidChangePowerState(
                                IONetworkController * controller,
                                IOPMPowerFlags        flags,
                                UInt32                stateNumber,
@@ -283,9 +284,9 @@ public:
     virtual bool inputEvent( UInt32 type, void * data) APPLE_KEXT_OVERRIDE;
 
 protected:
-	virtual void feedPacketInputTap(mbuf_t) APPLE_KEXT_OVERRIDE;
-	virtual void feedPacketOutputTap(mbuf_t) APPLE_KEXT_OVERRIDE;
-	virtual bool initIfnetParams(struct ifnet_init_params *params) APPLE_KEXT_OVERRIDE;
+    virtual void feedPacketInputTap(mbuf_t) APPLE_KEXT_OVERRIDE;
+    virtual void feedPacketOutputTap(mbuf_t) APPLE_KEXT_OVERRIDE;
+    virtual bool initIfnetParams(struct ifnet_init_params *params) APPLE_KEXT_OVERRIDE;
 
 public:
     // Virtual function padding
@@ -310,3 +311,4 @@ public:
 #endif /* __cplusplus */
 #endif /* KERNEL */
 #endif /* !_IOETHERNETINTERFACE_H */
+
