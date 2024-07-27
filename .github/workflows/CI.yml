@@ -1,21 +1,47 @@
 name: CI
 
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+env:
+  PROJECT_TYPE: KEXT
 
 jobs:
-
   build:
-
+    name: Build
     runs-on: macos-latest
-
+    env:
+      JOB_TYPE: BUILD
     steps:
-    - uses: actions/checkout@v2
-    - name: Release Build
-      run: 
-        xcodebuild -alltargets -configuration Release | xcpretty && exit ${PIPESTATUS[0]}
-    - name: Upload to Artifacts
-      uses: actions/upload-artifact@v2
-      with:
-        name: ${{ github.event.repository.name }}
-        path: build/Release
-        if-no-files-found: error
+      - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          repository: acidanthera/MacKernelSDK
+          path: MacKernelSDK
+      - name: CI Bootstrap
+        run: |
+          src=$(/usr/bin/curl -Lfs https://raw.githubusercontent.com/acidanthera/ocbuild/master/ci-bootstrap.sh) && eval "$src" || exit 1
+      - name: Lilu Bootstrap
+        run: |
+          src=$(/usr/bin/curl -Lfs https://raw.githubusercontent.com/acidanthera/Lilu/master/Lilu/Scripts/bootstrap.sh) && eval "$src" || exit 1
+
+      - run: xcodebuild -configuration=Release
+      - name: Upload to Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: Artifacts
+          path: build/Products/Release
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@e74ff71f7d8a4c4745b560a485cc5fdb9b5b999d
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/Release
+          tag: ${{ github.ref }}
+          file_glob: true
+
+ 
