@@ -11,8 +11,9 @@
 extern "C" {
 #endif // __cplusplus
     
-#include "kpi_mbuf.h"
-#include "kpi_interface.h"
+//#include "kpi_mbuf.h"
+#include <net/kpi_interface.h>
+//#include "kpi_interface.h"
 
 #include <libkern/libkern.h>
 #include <libkern/OSAtomic.h>
@@ -36,11 +37,14 @@ extern "C" {
 
 typedef u_int32_t ifnet_ctl_cmd_t;
 
-#include "IONetworkInterface.h"
-#include "IONetworkController.h"
-#include "IOEthernetController.h"
-#include "IOEthernetInterface.h"
-
+//#include "IONetworkInterface.h"
+//#include "IONetworkController.h"
+//#include "IOEthernetController.h"
+//#include "IOEthernetInterface.h"
+#include <IOKit/network/IOEthernetController.h>
+#include <IOKit/network/IOEthernetInterface.h>
+#include <IOKit/network/IONetworkController.h>
+#include <IOKit/network/IONetworkInterface.h>
 #include <IOKit/network/IOMbufMemoryCursor.h>
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/IOCommandGate.h>
