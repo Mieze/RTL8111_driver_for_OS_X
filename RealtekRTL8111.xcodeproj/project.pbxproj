@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C587409B2C54D8EE00266D5D /* libkmod.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C525C6482C544C32004BCC3C /* libkmod.a */; };
 		D34D36B61AD2F62B00EEEC08 /* RealtekRTL8111.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D37BD69716C6065300C255A2 /* RealtekRTL8111.cpp */; };
 		D34D36BF1AD2F62B00EEEC08 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = D37BD68716C605F500C255A2 /* InfoPlist.strings */; };
 		D3C8EF0E22FA0BDF00F3BF68 /* RealtekRTL8111Hardware.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D3C8EF0C22FA0BDF00F3BF68 /* RealtekRTL8111Hardware.cpp */; };
@@ -15,12 +16,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		D31CAE472531DF7000A11416 /* kpi_mbuf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = kpi_mbuf.h; sourceTree = "<group>"; };
-		D31CAE482531DF7000A11416 /* kpi_interface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = kpi_interface.h; sourceTree = "<group>"; };
-		D31CAE492531DF7000A11416 /* IOEthernetInterface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOEthernetInterface.h; sourceTree = "<group>"; };
-		D31CAE4A2531DF7000A11416 /* IONetworkController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IONetworkController.h; sourceTree = "<group>"; };
-		D31CAE4B2531DF7100A11416 /* IOEthernetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOEthernetController.h; sourceTree = "<group>"; };
-		D31CAE4C2531DF7100A11416 /* IONetworkInterface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IONetworkInterface.h; sourceTree = "<group>"; };
+		C525C6482C544C32004BCC3C /* libkmod.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libkmod.a; path = MacKernelSDK/Library/x86_64/libkmod.a; sourceTree = "<group>"; };
 		D31CAE4E2531DFE700A11416 /* RealtekRTL8111.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = RealtekRTL8111.hpp; sourceTree = "<group>"; };
 		D34D36C41AD2F62B00EEEC08 /* RealtekRTL8111.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RealtekRTL8111.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		D34D36C61AD2F71600EEEC08 /* RealtekRTL8111-V2-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "RealtekRTL8111-V2-Prefix.pch"; sourceTree = "<group>"; };
@@ -45,25 +41,13 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C587409B2C54D8EE00266D5D /* libkmod.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		D31CAE462531DF4C00A11416 /* Apple Headers */ = {
-			isa = PBXGroup;
-			children = (
-				D31CAE4B2531DF7100A11416 /* IOEthernetController.h */,
-				D31CAE492531DF7000A11416 /* IOEthernetInterface.h */,
-				D31CAE4A2531DF7000A11416 /* IONetworkController.h */,
-				D31CAE4C2531DF7100A11416 /* IONetworkInterface.h */,
-				D31CAE482531DF7000A11416 /* kpi_interface.h */,
-				D31CAE472531DF7000A11416 /* kpi_mbuf.h */,
-			);
-			path = "Apple Headers";
-			sourceTree = "<group>";
-		};
 		D37BD67216C605F500C255A2 = {
 			isa = PBXGroup;
 			children = (
@@ -84,6 +68,7 @@
 		D37BD68116C605F500C255A2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				C525C6482C544C32004BCC3C /* libkmod.a */,
 				D37BD68216C605F500C255A2 /* Other Frameworks */,
 			);
 			name = Frameworks;
@@ -112,7 +97,6 @@
 				D37BD69E16C6068D00C255A2 /* ethertool.h */,
 				D37A5F5B16CAF7D600644820 /* gpl.txt */,
 				D34D36C91AD2F7A900EEEC08 /* APPLE_LICENSE */,
-				D31CAE462531DF4C00A11416 /* Apple Headers */,
 				D37BD68516C605F500C255A2 /* Supporting Files */,
 			);
 			path = RealtekRTL8111;
@@ -238,6 +222,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = x86_64;
 				CLANG_ANALYZER_DEADCODE_DEADSTORES = NO;
 				CLANG_ANALYZER_DIVIDE_BY_ZERO = NO;
 				CLANG_ANALYZER_NULL_DEREFERENCE = NO;
@@ -253,7 +238,13 @@
 				INFOPLIST_FILE = "RealtekRTL8111/RealtekRTL8111-Info.plist";
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				KERNEL_EXTENSION_HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Headers";
+				KERNEL_FRAMEWORK_HEADERS = "$(PROJECT_DIR)/MacKernelSDK/Headers";
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
 				MARKETING_VERSION = "$(MODULE_VERSION)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
 				MODULE_VERSION = 2.4.2;
@@ -269,6 +260,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = x86_64;
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_USE_OPTIMIZATION_PROFILE = NO;
 				CODE_SIGN_IDENTITY = "";
@@ -283,8 +275,14 @@
 				INFOPLIST_FILE = "RealtekRTL8111/RealtekRTL8111-Info.plist";
 				INSTALL_GROUP = "$(GROUP)";
 				INSTALL_OWNER = "$(USER)";
+				KERNEL_EXTENSION_HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Headers";
+				KERNEL_FRAMEWORK_HEADERS = "$(PROJECT_DIR)/MacKernelSDK/Headers";
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
+				);
 				LLVM_LTO = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
 				MARKETING_VERSION = "$(MODULE_VERSION)";
 				MODULE_NAME = com.insanelymac.RealtekRTL8111;
 				MODULE_VERSION = 2.4.2;
