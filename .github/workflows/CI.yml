@@ -35,13 +35,14 @@ jobs:
         with:
           name: Artifacts
           path: build/Release
-      - name: Upload to Release
-        if: github.event_name == 'release'
-        uses: svenstaro/upload-release-action@e74ff71f7d8a4c4745b560a485cc5fdb9b5b999d
+     - name: Upload build
+        uses: svenstaro/upload-release-action@2.9.0
+        if: github.event_name != 'pull_request'
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/Release
-          tag: ${{ github.ref }}
-          file_glob: true
-
- 
+          file: build_output.zip
+          tag: refs/heads/master
+          release_name: RTL8111_driver_for_OS_X
+          body: Update objective-c-xcode.yml
+          file_glob: false
+          overwrite: true
