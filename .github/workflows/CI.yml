@@ -16,6 +16,7 @@ jobs:
     runs-on: macos-latest
     env:
       JOB_TYPE: BUILD
+      DEVELOPER_DIR: /Applications/Xcode_14.3.1.app/Contents/Developer
     steps:
       - uses: actions/checkout@v3
       - uses: actions/checkout@v3
@@ -30,6 +31,12 @@ jobs:
           src=$(/usr/bin/curl -Lfs https://raw.githubusercontent.com/acidanthera/Lilu/master/Lilu/Scripts/bootstrap.sh) && eval "$src" || exit 1
 
       - run: xcodebuild -configuration=Release
+      - name: Create Zip of Build Output
+        run: |
+          cd build/Release
+          zip -r build_output.zip *
+      - name: List Build Directory Contents
+        run: ls -R build/Release
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v3
         with:
@@ -40,7 +47,7 @@ jobs:
         if: github.event_name != 'pull_request'
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build_output.zip
+          file: build/Release/build_output.zip
           tag: refs/heads/master
           release_name: RTL8111_driver_for_OS_X
           body: Update objective-c-xcode.yml
