@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1200"
+   LastUpgradeVersion = "1520"
    version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "D37BD67E16C605F500C255A2"
+               BlueprintIdentifier = "D36681842D46CA8D00F47BA2"
                BuildableName = "RealtekRTL8111.kext"
                BlueprintName = "RealtekRTL8111"
                ReferencedContainer = "container:RealtekRTL8111.xcodeproj">
@@ -43,7 +43,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "D37BD67E16C605F500C255A2"
+            BlueprintIdentifier = "D36681842D46CA8D00F47BA2"
             BuildableName = "RealtekRTL8111.kext"
             BlueprintName = "RealtekRTL8111"
             ReferencedContainer = "container:RealtekRTL8111.xcodeproj">
