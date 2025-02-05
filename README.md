@@ -57,6 +57,10 @@ in case you have further questions, need support or want to submit a problem rep
 
 Changelog
 
+- Version 2.5.0d2 (2025-02-05)
+    - Added support for AppleVTD and restructured resource allocation.
+    - Cleaned up source code.
+    - Adopted MacKernelSDK.
 - Version 2.3.0 (2020-08-14)
     - Reworked medium section and EEE support to resolve problems with connection establishment and stability.
     - Added option to supply a fallback MAC.
