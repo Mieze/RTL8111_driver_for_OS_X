@@ -540,12 +540,10 @@ void RTL8111::freeRxResources()
             rxMbufArray[i] = NULL;
         }
     }
-    if (statBufDesc) {
-        statBufDesc->complete();
-        statBufDesc->release();
-        statBufDesc = NULL;
-        statPhyAddr = (IOPhysicalAddress64)NULL;
-        statData = NULL;
+    if (rxDescDmaCmd) {
+        rxDescDmaCmd->clearMemoryDescriptor();
+        rxDescDmaCmd->release();
+        rxDescDmaCmd = NULL;
     }
     if (rxBufArrayMem) {
         IOFree(txBufArrayMem, kRxBufArraySize);

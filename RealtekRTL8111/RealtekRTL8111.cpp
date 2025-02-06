@@ -58,6 +58,8 @@ bool RTL8111::init(OSDictionary *properties)
         rxBufArrayMem = NULL;
         txBufArrayMem = NULL;
         statBufDesc = NULL;
+        txPhyAddr = (IOPhysicalAddress64)NULL;
+        rxPhyAddr = (IOPhysicalAddress64)NULL;
         statPhyAddr = (IOPhysicalAddress64)NULL;
         statData = NULL;
         rxPacketHead = NULL;
