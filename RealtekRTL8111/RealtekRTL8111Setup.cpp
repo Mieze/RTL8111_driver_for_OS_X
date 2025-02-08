@@ -525,7 +525,13 @@ error_prep:
 void RTL8111::freeRxResources()
 {
     UInt32 i;
-        
+    
+    if (rxDescDmaCmd) {
+        rxDescDmaCmd->complete();
+        rxDescDmaCmd->clearMemoryDescriptor();
+        rxDescDmaCmd->release();
+        rxDescDmaCmd = NULL;
+    }
     if (rxBufDesc) {
         rxBufDesc->complete();
         rxBufDesc->release();
@@ -540,13 +546,8 @@ void RTL8111::freeRxResources()
             rxMbufArray[i] = NULL;
         }
     }
-    if (rxDescDmaCmd) {
-        rxDescDmaCmd->clearMemoryDescriptor();
-        rxDescDmaCmd->release();
-        rxDescDmaCmd = NULL;
-    }
     if (rxBufArrayMem) {
-        IOFree(txBufArrayMem, kRxBufArraySize);
+        IOFree(rxBufArrayMem, kRxBufArraySize);
         rxBufArrayMem = NULL;
         rxMbufArray = NULL;
     }
@@ -554,16 +555,17 @@ void RTL8111::freeRxResources()
 
 void RTL8111::freeTxResources()
 {
+    if (txDescDmaCmd) {
+        txDescDmaCmd->complete();
+        txDescDmaCmd->clearMemoryDescriptor();
+        txDescDmaCmd->release();
+        txDescDmaCmd = NULL;
+    }
     if (txBufDesc) {
         txBufDesc->complete();
         txBufDesc->release();
         txBufDesc = NULL;
         txPhyAddr = (IOPhysicalAddress64)NULL;
-    }
-    if (txDescDmaCmd) {
-        txDescDmaCmd->clearMemoryDescriptor();
-        txDescDmaCmd->release();
-        txDescDmaCmd = NULL;
     }
     if (txBufArrayMem) {
         IOFree(txBufArrayMem, kTxBufArraySize);
@@ -575,16 +577,17 @@ void RTL8111::freeTxResources()
 
 void RTL8111::freeStatResources()
 {
+    if (statDescDmaCmd) {
+        statDescDmaCmd->complete();
+        statDescDmaCmd->clearMemoryDescriptor();
+        statDescDmaCmd->release();
+        statDescDmaCmd = NULL;
+    }
     if (statBufDesc) {
         statBufDesc->complete();
         statBufDesc->release();
         statBufDesc = NULL;
         statPhyAddr = (IOPhysicalAddress64)NULL;
-    }
-    if (statDescDmaCmd) {
-        statDescDmaCmd->clearMemoryDescriptor();
-        statDescDmaCmd->release();
-        statDescDmaCmd = NULL;
     }
 }
 

@@ -135,9 +135,6 @@ void RTL8111::free()
     linuxData.mmio_addr = NULL;
     
     RELEASE(pciDevice);
-    freeTxResources();
-    freeRxResources();
-    freeStatResources();
 
     DebugLog("free() <===\n");
     
