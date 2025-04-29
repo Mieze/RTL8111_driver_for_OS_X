@@ -52,6 +52,7 @@ Although RealtekRTL8111 supports AppleVTD since version 2.5.0d0, there is no gua
 - Check your board's DMAR table and see if there are any reserved memory regions in it.
 - If there are reserved memory regions, you might want to patch your DMAR removing these regions. If it resolves the issue, congratulations! Be careful, because the board's manufacturer did add these regions with intention. Removing them may produce unexpected results too, like the problems described above.
 - Otherwise you have to keep AppleVTD disabled, because it is incompatible with your board and there is no way to make it compatible.
+- Users with CPUs from AMD can't use AppleVTD. You should continue using version 2.4.2 as supprt for AppleVTD is the only difference between 2.5.0 and 2.4.2.
 
 **Support**
 
