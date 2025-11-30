@@ -37,7 +37,7 @@ Before you install the driver you have to remove any installed driver for RTL811
 
 **Current status**
 
-The driver has been successfully tested under 10.8.2 - 10.15.6 with serveral versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are more than 30 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
+The driver has been successfully tested under 10.8.2 - 26.1 with serveral versions of the RTL8111 and is known to work stable on these devices but you'll have to consider that there are more than 30 different revisions of the RTL8111. The RTL8111B/8168B chips have been reported to work since version 1.0.2 too.
 
 **A word on AppleVTD**
 
@@ -65,6 +65,7 @@ in case you have further questions, need support or want to submit a problem rep
 **Contributions**
 
 If you find my projects useful, please consider to buy me a cup of coffee: https://buymeacoffee.com/mieze
+
 Thank you for your support! Your contribution helps me to continue development.
 
 **Changelog**
