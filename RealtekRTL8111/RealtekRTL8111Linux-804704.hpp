@@ -1928,6 +1928,7 @@ void rtl8168_init_pci_offset_99(struct rtl8168_private *tp);
 void rtl8168_issue_offset_99_event(struct rtl8168_private *tp);
 void rtl8168_init_pci_offset_180(struct rtl8168_private *tp);
 void rtl8168_disable_pci_offset_180(struct rtl8168_private *tp);
+void rtl8168_enable_pci_offset_180(struct rtl8168_private *tp);
 void rtl8168_disable_rxdvgate(struct net_device *dev);
 void rtl8168_hw_init(struct net_device *dev);
 u16 rtl8168_mac_ocp_read(struct rtl8168_private *tp, u16 reg_addr);
@@ -1935,6 +1936,7 @@ void rtl8168_mac_ocp_write(struct rtl8168_private *tp, u16 reg_addr, u16 value);
 void rtl8168_hw_ephy_config(struct net_device *dev);
 void rtl8168_get_hw_wol(struct net_device *dev);
 
+u32 mdio_real_read(struct rtl8168_private *tp, u32 RegAddr);
 void mdio_write_phy_ocp(struct rtl8168_private *tp, u16 PageNum, u32 RegAddr, u32 value);
 void rtl8168_get_bios_setting(struct net_device *dev);
 int rtl8168_check_dash(struct rtl8168_private *tp);
@@ -1964,6 +1966,7 @@ int rtl8168_disable_EEE(struct rtl8168_private *tp);
 
 void rtl8168_eeprom_type(struct rtl8168_private *tp);
 void rtl8168_eeprom_cleanup(void __iomem *ioaddr);
+int rtl8168_eeprom_cmd_done(void __iomem *ioaddr);
 u16 rtl8168_eeprom_read_sc(struct rtl8168_private *tp, u16 reg);
 void rtl8168_eeprom_write_sc(struct rtl8168_private *tp, u16 reg, u16 data);
 void rtl8168_shift_out_bits(int data, int count, void __iomem *ioaddr);

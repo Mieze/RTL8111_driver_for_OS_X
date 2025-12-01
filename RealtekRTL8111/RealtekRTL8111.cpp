@@ -1,6 +1,6 @@
 /* RealtekRTL8111.cpp -- RTL8111 driver class implementation.
  *
- * Copyright (c) 2013 Laura Müller <laura-mueller@uni-duesseldorf.de>
+ * Copyright (c) 2013-2025 Laura Müller <laura-mueller@uni-duesseldorf.de>
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -52,7 +52,7 @@ bool RTL8111::init(OSDictionary *properties)
         etherStats = NULL;
         baseMap = NULL;
         baseAddr = NULL;
-        rxMbufCursor = NULL;
+        rxPool = NULL;
         txNext2FreeMbuf = NULL;
         txMbufCursor = NULL;
         rxBufArrayMem = NULL;
@@ -70,7 +70,6 @@ bool RTL8111::init(OSDictionary *properties)
         multicastMode = false;
         linkUp = false;
         
-        rxPoll = false;
         polling = false;
         
         mtu = ETH_DATA_LEN;
@@ -97,6 +96,7 @@ bool RTL8111::init(OSDictionary *properties)
         enableTSO6 = false;
         enableCSO6 = false;
         disableASPM = false;
+        useAppleVTD = false;
         pciPMCtrlOffset = 0;
         memset(fallBackMacAddr.bytes, 0, kIOEthernetAddressSize);
     }
@@ -462,7 +462,7 @@ IOReturn RTL8111::outputStart(IONetworkInterface *interface, IOOptionBits option
 
         if (mbuf_get_tso_requested(m, &tsoFlags, &mssValue)) {
             DebugLog("mbuf_get_tso_requested() failed. Dropping packet.\n");
-            freePacket(m);
+            mbuf_freem_list(m);
             continue;
         }
         if (tsoFlags & (MBUF_TSO_IPV4 | MBUF_TSO_IPV6)) {
@@ -479,7 +479,10 @@ IOReturn RTL8111::outputStart(IONetworkInterface *interface, IOOptionBits option
             getChecksumCommand(&cmd, &opts2, checksums);
         }
         /* Finally get the physical segments. */
-        numSegs = txMbufCursor->getPhysicalSegmentsWithCoalesce(m, &txSegments[0], kMaxSegs);
+        if (useAppleVTD)
+            numSegs = txMapPacket(m, txSegments, kMaxSegs);
+        else
+            numSegs = txMbufCursor->getPhysicalSegmentsWithCoalesce(m, txSegments, kMaxSegs);
 
         /* Alloc required number of descriptors. As the descriptor which has been freed last must be
          * considered to be still in use we never fill the ring completely but leave at least one
@@ -487,7 +490,7 @@ IOReturn RTL8111::outputStart(IONetworkInterface *interface, IOOptionBits option
          */
         if (!numSegs) {
             DebugLog("getPhysicalSegmentsWithCoalesce() failed. Dropping packet.\n");
-            freePacket(m);
+            mbuf_freem_list(m);
             continue;
         }
         OSAddAtomic(-numSegs, &txNumFreeDesc);
@@ -514,14 +517,14 @@ IOReturn RTL8111::outputStart(IONetworkInterface *interface, IOOptionBits option
             if (index == kTxLastDesc)
                 opts1 |= RingEnd;
             
-            desc->addr = OSSwapHostToLittleInt64(txSegments[i].location);
-            desc->opts2 = OSSwapHostToLittleInt32(opts2);
-            desc->opts1 = OSSwapHostToLittleInt32(opts1);
+            desc->cmd.addr = OSSwapHostToLittleInt64(txSegments[i].location);
+            desc->cmd.opts2 = OSSwapHostToLittleInt32(opts2);
+            desc->cmd.opts1 = OSSwapHostToLittleInt32(opts1);
             
             //DebugLog("opts1=0x%x, opts2=0x%x, addr=0x%llx, len=0x%llx\n", opts1, opts2, txSegments[i].location, txSegments[i].length);
             ++index &= kTxDescMask;
         }
-        firstDesc->opts1 |= DescOwn;
+        firstDesc->cmd.opts1 |= DescOwn;
     }
     /* Set the polling bit. */
     WriteReg8(TxPoll, NPQ);
@@ -615,14 +618,12 @@ bool RTL8111::configureInterface(IONetworkInterface *interface)
         result = false;
         goto done;
     }
-    if (rxPoll) {
-        error = interface->configureInputPacketPolling(kNumRxDesc, kIONetworkWorkLoopSynchronous);
-        
-        if (error != kIOReturnSuccess) {
-            IOLog("configureInputPacketPolling() failed\n.");
-            result = false;
-            goto done;
-        }
+    error = interface->configureInputPacketPolling(kNumRxDesc, kIONetworkWorkLoopSynchronous);
+    
+    if (error != kIOReturnSuccess) {
+        IOLog("configureInputPacketPolling() failed\n.");
+        result = false;
+        goto done;
     }
     snprintf(modelName, kNameLenght, "Realtek %s PCIe Gigabit Ethernet", rtl_chip_info[linuxData.chipset].name);
     setProperty("model", modelName);
@@ -1047,12 +1048,13 @@ void RTL8111::pciErrorInterrupt()
 
 void RTL8111::txInterrupt()
 {
+    mbuf_t m;
     SInt32 numDirty = kNumTxDesc - txNumFreeDesc;
     UInt32 oldDirtyIndex = txDirtyDescIndex;
     UInt32 descStatus;
     
     while (numDirty-- > 0) {
-        descStatus = OSSwapLittleToHostInt32(txDescArray[txDirtyDescIndex].opts1);
+        descStatus = OSSwapLittleToHostInt32(txDescArray[txDirtyDescIndex].cmd.opts1);
         
         if (descStatus & DescOwn)
             break;
@@ -1061,7 +1063,12 @@ void RTL8111::txInterrupt()
         if (txNext2FreeMbuf)
             freePacket(txNext2FreeMbuf, kDelayFree);
 
-        txNext2FreeMbuf = txMbufArray[txDirtyDescIndex];
+        m = txMbufArray[txDirtyDescIndex];
+        
+        if (useAppleVTD && m)
+            txUnmapPacket();
+
+        txNext2FreeMbuf = m;
         txMbufArray[txDirtyDescIndex] = NULL;
         txDescDoneCount++;
         OSIncrementAtomic(&txNumFreeDesc);
@@ -1080,50 +1087,44 @@ void RTL8111::txInterrupt()
 
 UInt32 RTL8111::rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context)
 {
-    IOPhysicalSegment rxSegment;
     RtlDmaDesc *desc = &rxDescArray[rxNextDescIndex];
     mbuf_t bufPkt, newPkt;
     UInt64 addr;
-    UInt32 opts1, opts2;
+    UInt64 word1;
     UInt32 descStatus1, descStatus2;
     UInt32 pktSize;
     UInt32 goodPkts = 0;
     bool replaced;
     
-    while (!((descStatus1 = OSSwapLittleToHostInt32(desc->opts1)) & DescOwn) && (goodPkts < maxCount)) {
-        opts1 = (rxNextDescIndex == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
-        opts2 = 0;
-        addr = 0;
+    while (!((descStatus1 = OSSwapLittleToHostInt32(desc->cmd.opts1)) & DescOwn) && (goodPkts < maxCount)) {
+        word1 = (rxNextDescIndex == kRxLastDesc) ? (kRxBufferSize | DescOwn | RingEnd) : (kRxBufferSize | DescOwn);
+        addr = rxBufArray[rxNextDescIndex].phyAddr;
 
-        descStatus2 = OSSwapLittleToHostInt32(desc->opts2);
+        descStatus2 = OSSwapLittleToHostInt32(desc->cmd.opts2);
         pktSize = (descStatus1 & 0x1fff) - kIOEthernetCRCSize;
-        bufPkt = rxMbufArray[rxNextDescIndex];
+        bufPkt = rxBufArray[rxNextDescIndex].mbuf;
         //DebugLog("rxInterrupt(): descStatus1=0x%x, descStatus2=0x%x, pktSize=%u\n", descStatus1, descStatus2, pktSize);
         
-        newPkt = replaceOrCopyPacket(&bufPkt, pktSize, &replaced);
+        newPkt = rxPool->replaceOrCopyPacket(&bufPkt, pktSize, &replaced);
         
         if (!newPkt) {
             /* Allocation of a new packet failed so that we must leave the original packet in place. */
             DebugLog("replaceOrCopyPacket() failed.\n");
             etherStats->dot3RxExtraEntry.resourceErrors++;
-            opts1 |= kRxBufferPktSize;
             goto nextDesc;
         }
         
         /* If the packet was replaced we have to update the descriptor's buffer address. */
         if (replaced) {
-            if (rxMbufCursor->getPhysicalSegments(bufPkt, &rxSegment, 1) != 1) {
+            if (mbuf_next(bufPkt) != NULL) {
                 DebugLog("getPhysicalSegments() failed.\n");
                 etherStats->dot3RxExtraEntry.resourceErrors++;
-                freePacket(bufPkt);
-                opts1 |= kRxBufferPktSize;
+                mbuf_freem_list(bufPkt);
                 goto nextDesc;
             }
-            opts1 |= ((UInt32)rxSegment.length & 0x0000ffff);
-            addr = rxSegment.location;
-            rxMbufArray[rxNextDescIndex] = bufPkt;
-        } else {
-            opts1 |= kRxBufferPktSize;
+            rxBufArray[rxNextDescIndex].mbuf = bufPkt;
+            addr = mbuf_data_to_physical(mbuf_datastart(bufPkt));
+            rxBufArray[rxNextDescIndex].phyAddr = addr;
         }
         /* Set the length of the buffer. */
         mbuf_setlen(newPkt, pktSize);
@@ -1174,100 +1175,16 @@ UInt32 RTL8111::rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IO
 
         /* Finally update the descriptor and get the next one to examine. */
     nextDesc:
-        if (addr)
-            desc->addr = OSSwapHostToLittleInt64(addr);
+        desc->buf.addr = OSSwapHostToLittleInt64(addr);
+        desc->buf.blen = OSSwapHostToLittleInt64(word1);
         
-        desc->opts2 = OSSwapHostToLittleInt32(opts2);
-        desc->opts1 = OSSwapHostToLittleInt32(opts1);
-        
+        //DebugLog("rxDescArray[%u]: 0x%x %llu\n", rxNextDescIndex, (unsigned int)word1, addr);
+
         ++rxNextDescIndex &= kRxDescMask;
         desc = &rxDescArray[rxNextDescIndex];
     }
     return goodPkts;
 }
-
-/*
-void RTL8111::rxInterrupt()
-{
-    IOPhysicalSegment rxSegment;
-    RtlDmaDesc *desc = &rxDescArray[rxNextDescIndex];
-    mbuf_t bufPkt, newPkt;
-    UInt64 addr;
-    UInt32 opts1, opts2;
-    UInt32 descStatus1, descStatus2;
-    UInt32 pktSize;
-    UInt16 vlanTag;
-    UInt16 goodPkts = 0;
-    bool replaced;
-    
-    while (!((descStatus1 = OSSwapLittleToHostInt32(desc->opts1)) & DescOwn)) {
-        opts1 = (rxNextDescIndex == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
-        opts2 = 0;
-        addr = 0;
-        
-        // As we don't support jumbo frames we consider fragmented packets as errors.
-        if ((descStatus1 & (FirstFrag|LastFrag)) != (FirstFrag|LastFrag)) {
-            DebugLog("Fragmented packet.\n");
-            etherStats->dot3StatsEntry.frameTooLongs++;
-            opts1 |= kRxBufferPktSize;
-            goto nextDesc;
-        }
-        
-        descStatus2 = OSSwapLittleToHostInt32(desc->opts2);
-        pktSize = (descStatus1 & 0x1fff) - kIOEthernetCRCSize;
-        bufPkt = rxMbufArray[rxNextDescIndex];
-        vlanTag = (descStatus2 & RxVlanTag) ? OSSwapInt16(descStatus2 & 0xffff) : 0;
-        //DebugLog("rxInterrupt(): descStatus1=0x%x, descStatus2=0x%x, pktSize=%u\n", descStatus1, descStatus2, pktSize);
-        
-        newPkt = replaceOrCopyPacket(&bufPkt, pktSize, &replaced);
-        
-        if (!newPkt) {
-            // Allocation of a new packet failed so that we must leave the original packet in place.
-            DebugLog("replaceOrCopyPacket() failed.\n");
-            etherStats->dot3RxExtraEntry.resourceErrors++;
-            opts1 |= kRxBufferPktSize;
-            goto nextDesc;
-        }
-        
-        // If the packet was replaced we have to update the descriptor's buffer address.
-        if (replaced) {
-            if (rxMbufCursor->getPhysicalSegments(bufPkt, &rxSegment, 1) != 1) {
-                DebugLog("getPhysicalSegments() failed.\n");
-                etherStats->dot3RxExtraEntry.resourceErrors++;
-                freePacket(bufPkt);
-                opts1 |= kRxBufferPktSize;
-                goto nextDesc;
-            }
-            opts1 |= ((UInt32)rxSegment.length & 0x0000ffff);
-            addr = rxSegment.location;
-            rxMbufArray[rxNextDescIndex] = bufPkt;
-        } else {
-            opts1 |= kRxBufferPktSize;
-        }
-        getChecksumResult(newPkt, descStatus1, descStatus2);
-        
-        // Also get the VLAN tag if there is any.
-        if (vlanTag)
-            setVlanTag(newPkt, vlanTag);
-        
-        netif->inputPacket(newPkt, pktSize, IONetworkInterface::kInputOptionQueuePacket);
-        goodPkts++;
-        
-        // Finally update the descriptor and get the next one to examine.
-    nextDesc:
-        if (addr)
-            desc->addr = OSSwapHostToLittleInt64(addr);
-        
-        desc->opts2 = OSSwapHostToLittleInt32(opts2);
-        desc->opts1 = OSSwapHostToLittleInt32(opts1);
-        
-        ++rxNextDescIndex &= kRxDescMask;
-        desc = &rxDescArray[rxNextDescIndex];
-    }
-    if (goodPkts)
-        netif->flushInputQueue();
-}
-*/
 
 void RTL8111::checkLinkStatus()
 {
@@ -1437,50 +1354,6 @@ done:
     WriteReg16(IntrMask, intrMask);
 }
 
-void RTL8111::interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count)
-{
-    UInt64 time, abstime;
-    UInt32 packets;
-
-	UInt16 status;
-    UInt16 rxMask;
-    
-	WriteReg16(IntrMask, 0x0000);
-    status = ReadReg16(IntrStatus);
-    
-    /* hotplug/major error/no more work/shared irq */
-    if ((status == 0xFFFF) || !status)
-        goto done;
-    
-    /* Calculate time since last interrupt. */
-    clock_get_uptime(&abstime);
-    absolutetime_to_nanoseconds(abstime, &time);
-    rxMask = ((time - lastIntrTime) < kFastIntrTreshhold) ? (RxOK | RxDescUnavail | RxFIFOOver) : (RxOK | RxDescUnavail | RxFIFOOver | TxOK);
-    lastIntrTime = time;
-    
-    if (status & SYSErr) {
-        pciErrorInterrupt();
-        goto done;
-    }
-    /* Rx interrupt */
-    if (status & rxMask) {
-        packets = rxInterrupt(netif, kNumRxDesc, NULL, NULL);
-        
-        if (packets)
-            netif->flushInputQueue();
-    }
-    /* Tx interrupt */
-    if (status & (TxOK | TxErr | TxDescUnavail))
-        txInterrupt();
-
-    if (status & LinkChg)
-        checkLinkStatus();
-
-done:
-    WriteReg16(IntrStatus, status);
-	WriteReg16(IntrMask, intrMask);
-}
-
 bool RTL8111::checkForDeadlock()
 {
     bool deadlock = false;
@@ -1500,7 +1373,7 @@ bool RTL8111::checkForDeadlock()
             
             for (i = 0; i < 10; i++) {
                 index = ((txDirtyDescIndex - 1 + i) & kTxDescMask);
-                IOLog("desc[%u]: opts1=0x%x, opts2=0x%x, addr=0x%llx.\n", index, txDescArray[index].opts1, txDescArray[index].opts2, txDescArray[index].addr);
+                IOLog("desc[%u]: opts1=0x%x, opts2=0x%x, addr=0x%llx.\n", index, txDescArray[index].cmd.opts1, txDescArray[index].cmd.opts2, txDescArray[index].cmd.addr);
             }
 #endif
             IOLog("Tx stalled? Resetting chipset. ISR=0x%x, IMR=0x%x.\n", ReadReg16(IntrStatus), ReadReg16(IntrMask));
@@ -1541,7 +1414,10 @@ void RTL8111::pollInputPackets(IONetworkInterface *interface, uint32_t maxCount,
 {
     //DebugLog("pollInputPackets() ===>\n");
     
-    rxInterrupt(interface, maxCount, pollQueue, context);
+    if (useAppleVTD)
+        rxInterruptVTD(interface, maxCount, pollQueue, context);
+    else
+        rxInterrupt(interface, maxCount, pollQueue, context);
     
     /* Finally cleanup the transmitter ring. */
     txInterrupt();
@@ -1591,63 +1467,6 @@ void RTL8111::getChecksumCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_f
     }
 }
 
-#ifdef DEBUG
-
-void RTL8111::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
-{
-    UInt32 resultMask = 0;
-    UInt32 validMask = 0;
-    UInt32 pktType = (status1 & RxProtoMask);
-    
-    /* Get the result of the checksum calculation and store it in the packet. */
-    if (revisionC) {
-        if (pktType == RxTCPT) {
-            /* TCP packet */
-            if (status2 & RxV4F) {
-                resultMask = (kChecksumTCP | kChecksumIP);
-                validMask = (status1 & RxTCPF) ? 0 : (kChecksumTCP | kChecksumIP);
-            } else if (status2 & RxV6F) {
-                resultMask = kChecksumTCPIPv6;
-                validMask = (status1 & RxTCPF) ? 0 : kChecksumTCPIPv6;
-            }
-        } else if (pktType == RxUDPT) {
-            /* UDP packet */
-            if (status2 & RxV4F) {
-                resultMask = (kChecksumUDP | kChecksumIP);
-                validMask = (status1 & RxUDPF) ? 0 : (kChecksumUDP | kChecksumIP);
-            } else if (status2 & RxV6F) {
-                resultMask = kChecksumUDPIPv6;
-                validMask = (status1 & RxUDPF) ? 0 : kChecksumUDPIPv6;
-            }
-        } else if ((pktType == 0) && (status2 & RxV4F)) {
-            /* IP packet */
-            resultMask = kChecksumIP;
-            validMask = (status1 & RxIPF) ? 0 : kChecksumIP;
-        }
-    } else {
-        if (pktType == RxProtoTCP) {
-            /* TCP packet */
-            resultMask = (kChecksumTCP | kChecksumIP);
-            validMask = (status1 & RxTCPF) ? 0 : (kChecksumTCP | kChecksumIP);
-        } else if (pktType == RxProtoUDP) {
-            /* UDP packet */
-            resultMask = (kChecksumUDP | kChecksumIP);
-            validMask = (status1 & RxUDPF) ? 0 : (kChecksumUDP | kChecksumIP);
-        } else if (pktType == RxProtoIP) {
-            /* IP packet */
-            resultMask = kChecksumIP;
-            validMask = (status1 & RxIPF) ? 0 : kChecksumIP;
-        }
-    }
-    if (validMask != resultMask)
-        IOLog("checksums applied: 0x%x, checksums valid: 0x%x\n", resultMask, validMask);
-
-    if (validMask)
-        setChecksumResult(m, kChecksumFamilyTCPIP, resultMask, validMask);
-}
-
-#else
-
 void RTL8111::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
 {
     UInt32 resultMask = 0;
@@ -1682,8 +1501,6 @@ void RTL8111::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
     if (resultMask)
         setChecksumResult(m, kChecksumFamilyTCPIP, resultMask, resultMask);
 }
-
-#endif
 
 static const char *speed1GName = "1-Gigabit";
 static const char *speed100MName = "100-Megabit";
@@ -1779,27 +1596,26 @@ void RTL8111::setLinkUp()
     linkUp = true;
     setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, mediumTable[mediumIndex], mediumSpeed, NULL);
 
-    /* Start output thread, statistics update and watchdog. */
-    if (rxPoll) {
-        /* Update poll params according to link speed. */
-        bzero(&pollParams, sizeof(IONetworkPacketPollingParameters));
-        
-        if (speed == SPEED_10) {
-            pollParams.lowThresholdPackets = 2;
-            pollParams.highThresholdPackets = 8;
-            pollParams.lowThresholdBytes = 0x400;
-            pollParams.highThresholdBytes = 0x1800;
-            pollParams.pollIntervalTime = 1000000;  /* 1ms */
-        } else {
-            pollParams.lowThresholdPackets = 10;
-            pollParams.highThresholdPackets = 40;
-            pollParams.lowThresholdBytes = 0x1000;
-            pollParams.highThresholdBytes = 0x10000;
-            pollParams.pollIntervalTime = (speed == SPEED_1000) ? 170000 : 1000000;  /* 170µs / 1ms */
-        }
-        netif->setPacketPollingParameters(&pollParams, 0);
-        DebugLog("pollIntervalTime: %lluus\n", (pollParams.pollIntervalTime / 1000));
+    /* Update poll params according to link speed. */
+    bzero(&pollParams, sizeof(IONetworkPacketPollingParameters));
+    
+    if (speed == SPEED_10) {
+        pollParams.lowThresholdPackets = 2;
+        pollParams.highThresholdPackets = 8;
+        pollParams.lowThresholdBytes = 0x400;
+        pollParams.highThresholdBytes = 0x1800;
+        pollParams.pollIntervalTime = 1000000;  /* 1ms */
+    } else {
+        pollParams.lowThresholdPackets = 10;
+        pollParams.highThresholdPackets = 40;
+        pollParams.lowThresholdBytes = 0x1000;
+        pollParams.highThresholdBytes = 0x10000;
+        pollParams.pollIntervalTime = (speed == SPEED_1000) ? 170000 : 1000000;  /* 170µs / 1ms */
     }
+    netif->setPacketPollingParameters(&pollParams, 0);
+    DebugLog("pollIntervalTime: %lluus\n", (pollParams.pollIntervalTime / 1000));
+    
+    /* Start output thread, statistics update and watchdog. */
     netif->startOutputThread();
 
     IOLog("Link up on en%u, %s, %s, %s%s\n", netif->getUnitNumber(), speedName, duplexName, flowName, eeeName);
@@ -1896,7 +1712,7 @@ void RTL8111::timerActionRTL8111C(IOTimerEventSource *timer)
      * synchronized to the workloop.
      */
     if (txNext2FreeMbuf) {
-        freePacket(txNext2FreeMbuf);
+        mbuf_freem_list(txNext2FreeMbuf);
         txNext2FreeMbuf = NULL;
     }
     
@@ -1933,7 +1749,7 @@ void RTL8111::timerActionRTL8111B(IOTimerEventSource *timer)
      * synchronized to the workloop.
      */
     if (txNext2FreeMbuf) {
-        freePacket(txNext2FreeMbuf);
+        mbuf_freem_list(txNext2FreeMbuf);
         txNext2FreeMbuf = NULL;
     }
     

@@ -16,9 +16,8 @@ static const char *offName = "disabled";
 void RTL8111::getParams()
 {
     OSDictionary *params;
-    OSNumber *intrMit;
+    OSIterator *iterator;
     OSBoolean *enableEEE;
-    OSBoolean *poll;
     OSBoolean *tso4;
     OSBoolean *tso6;
     OSBoolean *csoV6;
@@ -26,6 +25,24 @@ void RTL8111::getParams()
     OSString *versionString;
     OSString *fbAddr;
 
+    if (version_major >= Tahoe) {
+        params = serviceMatching("AppleVTD");
+        
+        if (params) {
+            iterator = IOService::getMatchingServices(params);
+            
+            if (iterator) {
+                IOMapper *mp = OSDynamicCast(IOMapper, iterator->getNextObject());
+                
+                if (mp) {
+                    IOLog("AppleVTD is enabled.");
+                    useAppleVTD = true;
+                }
+                iterator->release();
+            }
+            params->release();
+        }
+    }
     versionString = OSDynamicCast(OSString, getProperty(kDriverVersionName));
 
     params = OSDynamicCast(OSDictionary, getProperty(kParamName));
@@ -45,11 +62,6 @@ void RTL8111::getParams()
         
         IOLog("EEE support %s.\n", linuxData.eee_enabled ? onName : offName);
         
-        poll = OSDynamicCast(OSBoolean, params->getObject(kEnableRxPollName));
-        rxPoll = (poll != NULL) ? poll->getValue() : false;
-        
-        IOLog("RxPoll support %s.\n", rxPoll ? onName : offName);
-
         tso4 = OSDynamicCast(OSBoolean, params->getObject(kEnableTSO4Name));
         enableTSO4 = (tso4 != NULL) ? tso4->getValue() : false;
         
@@ -64,12 +76,7 @@ void RTL8111::getParams()
         enableCSO6 = (csoV6 != NULL) ? csoV6->getValue() : false;
         
         IOLog("TCP/IPv6 checksum offload %s.\n", enableCSO6 ? onName : offName);
-        
-        intrMit = OSDynamicCast(OSNumber, params->getObject(kIntrMitigateName));
-        
-        if (intrMit && !rxPoll)
-            intrMitigateValue = intrMit->unsigned16BitValue();
-        
+                
         fbAddr = OSDynamicCast(OSString, params->getObject(kFallbackName));
         
         if (fbAddr) {
@@ -88,7 +95,6 @@ void RTL8111::getParams()
     } else {
         disableASPM = true;
         linuxData.eee_enabled = 1;
-        rxPoll = true;
         enableTSO4 = true;
         enableTSO6 = true;
         intrMitigateValue = 0x5f51;
@@ -174,7 +180,6 @@ error1:
 
 bool RTL8111::initEventSources(IOService *provider)
 {
-    IOReturn intrResult;
     int msiIndex = -1;
     int intrIndex = 0;
     int intrType = 0;
@@ -188,7 +193,7 @@ bool RTL8111::initEventSources(IOService *provider)
     }
     txQueue->retain();
     
-    while ((intrResult = pciDevice->getInterruptType(intrIndex, &intrType)) == kIOReturnSuccess) {
+    while (pciDevice->getInterruptType(intrIndex, &intrType) == kIOReturnSuccess) {
         if (intrType & kIOInterruptTypePCIMessaged){
             msiIndex = intrIndex;
             break;
@@ -198,10 +203,10 @@ bool RTL8111::initEventSources(IOService *provider)
     if (msiIndex != -1) {
         DebugLog("MSI interrupt index: %d\n", msiIndex);
         
-        if (rxPoll) {
-            interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurredPoll), provider, msiIndex);
+        if (useAppleVTD) {
+            interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurredVTD), provider, msiIndex);
         } else {
-            interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurred), provider, msiIndex);
+            interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &RTL8111::interruptOccurredPoll), provider, msiIndex);
         }
     }
     if (!interruptSource) {
@@ -239,14 +244,13 @@ error1:
 
 bool RTL8111::setupRxResources()
 {
-    IOPhysicalSegment rxSegment;
+    IOPhysicalAddress64 pa = 0;
     IODMACommand::Segment64 seg;
-    mbuf_t spareMbuf[kRxNumSpareMbufs];
     mbuf_t m;
     UInt64 offset = 0;
+    UInt64 word1;
     UInt32 numSegs = 1;
     UInt32 i;
-    UInt32 opts1;
     bool result = false;
     
     /* Alloc rx mbuf_t array. */
@@ -256,7 +260,7 @@ bool RTL8111::setupRxResources()
         IOLog("Couldn't alloc receive buffer array.\n");
         goto done;
     }
-    rxMbufArray = (mbuf_t *)rxBufArrayMem;
+    rxBufArray = (rtlRxBufferInfo *)rxBufArrayMem;
 
     /* Create receiver descriptor array. */
     rxBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMemoryHostPhysicallyContiguous | kIOMapInhibitCache), kRxDescSize, 0xFFFFFFFFFFFFFF00ULL);
@@ -285,73 +289,70 @@ bool RTL8111::setupRxResources()
     
     if (rxDescDmaCmd->gen64IOVMSegments(&offset, &seg, &numSegs) != kIOReturnSuccess) {
         IOLog("gen64IOVMSegments() failed.\n");
-        goto error_segm;
+        goto error_rx_buf;
     }
     /* And the rx ring's physical address too. */
     rxPhyAddr = seg.fIOVMAddr;
     
     /* Initialize rxDescArray. */
     bzero(rxDescArray, kRxDescSize);
-    rxDescArray[kRxLastDesc].opts1 = OSSwapHostToLittleInt32(RingEnd);
+    rxDescArray[kRxLastDesc].cmd.opts1 = OSSwapHostToLittleInt32(RingEnd);
 
     for (i = 0; i < kNumRxDesc; i++) {
-        rxMbufArray[i] = NULL;
+        rxBufArray[i].mbuf = NULL;
     }
     rxNextDescIndex = 0;
+    rxMapNextIndex = 0;
     
-    rxMbufCursor = IOMbufNaturalMemoryCursor::withSpecification(PAGE_SIZE, 1);
-    
-    if (!rxMbufCursor) {
-        IOLog("Couldn't create rxMbufCursor.\n");
-        goto error_segm;
+    rxPool = RealtekRxPool::withCapacity(kRxPoolMbufCap, kRxPoolClstCap);
+
+    if (!rxPool) {
+        IOLog("Couldn't alloc receive buffer pool.\n");
+        goto error_rx_buf;
     }
 
     /* Alloc receive buffers. */
     for (i = 0; i < kNumRxDesc; i++) {
-        m = allocatePacket(kRxBufferPktSize);
+        m = rxPool->getPacket(kRxBufferSize);
         
         if (!m) {
-            IOLog("Couldn't alloc receive buffer.\n");
+            IOLog("Couldn't get receive buffer from pool.\n");
             goto error_buf;
         }
-        rxMbufArray[i] = m;
-        
-        if (rxMbufCursor->getPhysicalSegments(m, &rxSegment, 1) != 1) {
-            IOLog("getPhysicalSegments() for receive buffer failed.\n");
-            goto error_buf;
+        rxBufArray[i].mbuf = m;
+
+        if (!useAppleVTD) {
+            word1 = (kRxBufferSize | DescOwn);
+
+            if (i == kRxLastDesc)
+                word1 |= RingEnd;
+
+            pa = mbuf_data_to_physical(mbuf_datastart(m));
+            rxBufArray[i].phyAddr = pa;
+
+            rxDescArray[i].buf.blen = OSSwapHostToLittleInt64(word1);
+            rxDescArray[i].buf.addr = OSSwapHostToLittleInt64(pa);
         }
-        opts1 = (UInt32)rxSegment.length;
-        opts1 |= (i == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
-        rxDescArray[i].opts1 = OSSwapHostToLittleInt32(opts1);
-        rxDescArray[i].opts2 = 0;
-        rxDescArray[i].addr = OSSwapHostToLittleInt64(rxSegment.location);
     }
+    if (useAppleVTD)
+        result = setupRxMap();
+    else
+        result = true;
 
-    /* Allocate some spare mbufs and free them in order to increase the buffer pool.
-     * This seems to avoid the replaceOrCopyPacket() errors under heavy load.
-     */
-    for (i = 0; i < kRxNumSpareMbufs; i++)
-        spareMbuf[i] = allocatePacket(kRxBufferPktSize);
-
-    for (i = 0; i < kRxNumSpareMbufs; i++) {
-        if (spareMbuf[i])
-            freePacket(spareMbuf[i]);
-    }
-    result = true;
-    
 done:
     return result;
     
 error_buf:
     for (i = 0; i < kNumRxDesc; i++) {
-        if (rxMbufArray[i]) {
-            freePacket(rxMbufArray[i]);
-            rxMbufArray[i] = NULL;
+        if (rxBufArray[i].mbuf) {
+            mbuf_freem_list(rxBufArray[i].mbuf);
+            rxBufArray[i].mbuf = NULL;
+            rxBufArray[i].phyAddr = 0;
         }
     }
-    RELEASE(rxMbufCursor);
+    RELEASE(rxPool);
 
-error_segm:
+error_rx_buf:
     rxDescDmaCmd->clearMemoryDescriptor();
 
 error_set_desc:
@@ -366,7 +367,7 @@ error_prep:
 error_buff:
     IOFree(rxBufArrayMem, kRxBufArraySize);
     rxBufArrayMem = NULL;
-    rxMbufArray = NULL;
+    rxBufArray = NULL;
 
     goto done;
 }
@@ -422,24 +423,32 @@ bool RTL8111::setupTxResources()
     
     /* Initialize txDescArray. */
     bzero(txDescArray, kTxDescSize);
-    txDescArray[kTxLastDesc].opts1 = OSSwapHostToLittleInt32(RingEnd);
+    txDescArray[kTxLastDesc].cmd.opts1 = OSSwapHostToLittleInt32(RingEnd);
     
     for (i = 0; i < kNumTxDesc; i++) {
         txMbufArray[i] = NULL;
     }
     txNextDescIndex = txDirtyDescIndex = 0;
     txNumFreeDesc = kNumTxDesc;
-    txMbufCursor = IOMbufNaturalMemoryCursor::withSpecification(0x4000, kMaxSegs);
     
-    if (!txMbufCursor) {
-        IOLog("Couldn't create txMbufCursor.\n");
-        goto error_segm;
+    if (useAppleVTD) {
+        result = setupTxMap();
+        
+        if (!result)
+            goto error_segm;
+    } else {
+        txMbufCursor = IOMbufNaturalMemoryCursor::withSpecification(0x4000, kMaxSegs);
+        
+        if (!txMbufCursor) {
+            IOLog("Couldn't create txMbufCursor.\n");
+            goto error_segm;
+        }
+        result = true;
     }
-    result = true;
     
 done:
     return result;
-    
+        
 error_segm:
     txDescDmaCmd->clearMemoryDescriptor();
 
@@ -526,6 +535,9 @@ void RTL8111::freeRxResources()
 {
     UInt32 i;
     
+    if (useAppleVTD)
+        freeRxMap();
+
     if (rxDescDmaCmd) {
         rxDescDmaCmd->complete();
         rxDescDmaCmd->clearMemoryDescriptor();
@@ -538,23 +550,28 @@ void RTL8111::freeRxResources()
         rxBufDesc = NULL;
         rxPhyAddr = (IOPhysicalAddress64)NULL;
     }
-    RELEASE(rxMbufCursor);
+    RELEASE(rxPool);
     
     for (i = 0; i < kNumRxDesc; i++) {
-        if (rxMbufArray[i]) {
-            freePacket(rxMbufArray[i]);
-            rxMbufArray[i] = NULL;
+        if (rxBufArray[i].mbuf) {
+            mbuf_freem_list(rxBufArray[i].mbuf);
+            rxBufArray[i].mbuf = NULL;
         }
     }
     if (rxBufArrayMem) {
         IOFree(rxBufArrayMem, kRxBufArraySize);
         rxBufArrayMem = NULL;
-        rxMbufArray = NULL;
+        rxBufArray = NULL;
     }
 }
 
 void RTL8111::freeTxResources()
 {
+    if (useAppleVTD)
+        freeTxMap();
+    else
+        RELEASE(txMbufCursor);
+
     if (txDescDmaCmd) {
         txDescDmaCmd->complete();
         txDescDmaCmd->clearMemoryDescriptor();
@@ -572,7 +589,6 @@ void RTL8111::freeTxResources()
         txBufArrayMem = NULL;
         txMbufArray = NULL;
     }
-    RELEASE(txMbufCursor);
 }
 
 void RTL8111::freeStatResources()
@@ -591,35 +607,54 @@ void RTL8111::freeStatResources()
     }
 }
 
-
 void RTL8111::clearDescriptors()
 {
+    IOMemoryDescriptor *md;
     mbuf_t m;
+    UInt64 word1;
     UInt32 lastIndex = kTxLastDesc;
-    UInt32 opts1;
     UInt32 i;
     
     DebugLog("clearDescriptors() ===>\n");
     
+    if (useAppleVTD && txMapInfo) {
+        for (i = 0; i < kNumTxMemDesc; i++) {
+            md = txMapInfo->txMemIO[i];
+            
+            if (md && (md->getTag() == kIOMemoryActive)) {
+                md->complete();
+                md->setTag(kIOMemoryInactive);
+            }
+        }
+        txMapInfo->txNextMem2Use = txMapInfo->txNextMem2Free = 0;
+        txMapInfo->txNumFreeMem = kNumTxMemDesc;
+    }
     for (i = 0; i < kNumTxDesc; i++) {
-        txDescArray[i].opts1 = OSSwapHostToLittleInt32((i != lastIndex) ? 0 : RingEnd);
+        txDescArray[i].cmd.opts1 = OSSwapHostToLittleInt32((i != lastIndex) ? 0 : RingEnd);
         m = txMbufArray[i];
         
         if (m) {
-            freePacket(m);
+            mbuf_freem_list(m);
             txMbufArray[i] = NULL;
         }
     }
     txDirtyDescIndex = txNextDescIndex = 0;
     txNumFreeDesc = kNumTxDesc;
-        
+    
+    if (useAppleVTD)
+        rxMapBuffers(0, kNumRxMemDesc);
+
     for (i = 0; i < kNumRxDesc; i++) {
-        opts1 = (UInt32)kRxBufferPktSize;
-        opts1 |= (i == kRxLastDesc) ? (RingEnd | DescOwn) : DescOwn;
-        rxDescArray[i].opts1 = OSSwapHostToLittleInt32(opts1);
-        rxDescArray[i].opts2 = 0;
+        word1 = (kRxBufferSize | DescOwn);
+        
+        if (i == kRxLastDesc)
+            word1 |= RingEnd;
+        
+        rxDescArray[i].buf.blen = OSSwapHostToLittleInt64(word1);
+        rxDescArray[i].buf.addr = OSSwapHostToLittleInt64(rxBufArray[i].phyAddr);
     }
     rxNextDescIndex = 0;
+    rxMapNextIndex = 0;
     deadlockWarn = 0;
     
     /* Free packet fragments which haven't been upstreamed yet.  */
@@ -635,7 +670,7 @@ void RTL8111::discardPacketFragment()
      * we have to free it in order to prevent a memory leak.
      */
     if (rxPacketHead)
-        freePacket(rxPacketHead);
+        mbuf_freem_list(rxPacketHead);
     
     rxPacketHead = rxPacketTail = NULL;
     rxPacketSize = 0;

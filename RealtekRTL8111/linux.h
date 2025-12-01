@@ -223,7 +223,7 @@ _OSReadInt8((base), (byteOffset))
 #define RTL_R16(reg)            OSReadLittleInt16((ioaddr), (reg))
 #define RTL_R32(reg)            OSReadLittleInt32((ioaddr), (reg))
 
-#define wmb() OSSynchronizeIO()
+#define wmb()    asm volatile("sfence" : : : "memory")
 
 /******************************************************************************/
 #pragma mark -

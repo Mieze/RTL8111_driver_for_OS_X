@@ -3,7 +3,7 @@
 //  RealtekRTL8111
 //
 //  Created by Laura Müller on 06.08.19.
-//  Copyright © 2019 Laura Müller. All rights reserved.
+//  Copyright © 2019-2025 Laura Müller. All rights reserved.
 //
 
 #include "RealtekRTL8111.hpp"
@@ -679,6 +679,7 @@ void RTL8111::restartRTL8111()
     clearDescriptors();
         
     rxNextDescIndex = 0;
+    rxMapNextIndex = 0;
     deadlockWarn = 0;
     
     /* Reinitialize NIC. */
@@ -778,9 +779,14 @@ void RTL8111::setupRTL8111(UInt16 newIntrMitigate, bool enableInterrupts)
 
     WriteReg8(Config5, ReadReg8(Config5) & ~BIT_7);
     
+    if (useAppleVTD) {
+        txMapInfo->txNextMem2Use = txMapInfo->txNextMem2Free = 0;
+        txMapInfo->txNumFreeMem = kNumTxMemDesc;
+    }
     txNextDescIndex = txDirtyDescIndex = 0;
     txNumFreeDesc = kNumTxDesc;
     rxNextDescIndex = 0;
+    rxMapNextIndex = 0;
     
     WriteReg32(TxDescStartAddrLow, (txPhyAddr & 0x00000000ffffffff));
     WriteReg32(TxDescStartAddrHigh, (txPhyAddr >> 32));

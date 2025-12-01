@@ -1,6 +1,6 @@
 /* RealtekRTL8111.hpp -- RTL8111 driver class definition.
  *
- * Copyright (c) 2013 Laura Müller <laura-mueller@uni-duesseldorf.de>
+ * Copyright (c) 2013-2025 Laura Müller <laura-mueller@uni-duesseldorf.de>
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -19,6 +19,7 @@
  */
 
 #include "RealtekRTL8111Linux-804704.hpp"
+#include "RealtekRxPool.hpp"
 
 #ifdef DEBUG
 #define DebugLog(args...) IOLog(args)
@@ -79,10 +80,16 @@ enum {
 };
 
 /* RTL8111's dma descriptor. */
-typedef struct RtlDmaDesc {
-    UInt32 opts1;
-    UInt32 opts2;
-    UInt64 addr;
+typedef union RtlDmaDesc {
+    struct {
+        UInt32 opts1;
+        UInt32 opts2;
+        UInt64 addr;
+    } cmd;
+    struct {
+        UInt64 blen;
+        UInt64 addr;
+    } buf;
 } RtlDmaDesc;
 
 /* RTL8111's statistics dump data structure */
@@ -104,28 +111,47 @@ typedef struct RtlStatData {
 
 #define kTransmitQueueCapacity  1024
 
-/* With up to 40 segments we should be on the save side. */
-#define kMaxSegs 40
+/* With up to 32 segments we should be on the save side. */
+#define kMaxSegs 32
 
 /* The number of descriptors must be a power of 2. */
-#define kNumTxDesc	1024	/* Number of Tx descriptors */
-#define kNumRxDesc	512     /* Number of Rx descriptors */
+#define kNumTxDesc	512	/* Number of Tx descriptors */
+#define kNumRxDesc	512 /* Number of Rx descriptors */
 #define kTxLastDesc    (kNumTxDesc - 1)
 #define kRxLastDesc    (kNumRxDesc - 1)
 #define kTxDescMask    (kNumTxDesc - 1)
 #define kRxDescMask    (kNumRxDesc - 1)
-#define kTxDescSize    (kNumTxDesc*sizeof(struct RtlDmaDesc))
-#define kRxDescSize    (kNumRxDesc*sizeof(struct RtlDmaDesc))
-#define kRxBufArraySize (kNumRxDesc * sizeof(mbuf_t))
+#define kTxDescSize    (kNumTxDesc * sizeof(union RtlDmaDesc))
+#define kRxDescSize    (kNumRxDesc * sizeof(union RtlDmaDesc))
+#define kRxBufArraySize (kNumRxDesc * sizeof(rtlRxBufferInfo))
 #define kTxBufArraySize (kNumTxDesc * sizeof(mbuf_t))
 
+/* Numbers of IOMemoryDescriptors and IORanges for tx */
+#define kNumTxMemDesc       (kNumTxDesc / 2)
+#define kTxMemDescMask      (kNumTxMemDesc - 1)
+#define kNumTxRanges        (kNumTxDesc + kMaxSegs)
+#define kTxRangeMask        kTxDescMask
+#define kTxMapMemSize       sizeof(struct rtlTxMapInfo)
+
+/* Numbers of IOMemoryDescriptors and batch size for rx */
+#define kRxMemBaseShift 4
+#define kNumRxMemDesc   (kNumRxDesc >> kRxMemBaseShift)
+#define kRxMapMemSize   (sizeof(struct rtlRxMapInfo))
+#define kRxMemBatchSize (kNumRxDesc / kNumRxMemDesc)
+#define kRxMemDescMask  (kRxMemBatchSize - 1)
+#define kRxMemBaseMask  ~kRxMemDescMask
+
+
 /* This is the receive buffer size (must be large enough to hold a packet). */
-#define kRxBufferPktSize    2048
-#define kRxNumSpareMbufs    100
+#define kRxBufferSize   PAGE_SIZE
 #define kMCFilterLimit  32
-#define kMaxMtu 9000
+#define kMaxMtu         9000
 #define kMaxPacketSize (kMaxMtu + ETH_HLEN + ETH_FCS_LEN)
 #define kJumboFrameSupport CFG_METHOD_16
+
+/* RealtekRxPool capacities */
+#define kRxPoolClstCap   100    /* mbufs with 4k cluster*/
+#define kRxPoolMbufCap   50     /* mbufs without clusters */
 
 /* statitics timer period in ms. */
 #define kTimeoutMS 1000
@@ -134,7 +160,7 @@ typedef struct RtlStatData {
 #define kFastIntrTreshhold 200000
 
 /* Treshhold value to wake a stalled queue */
-#define kTxQueueWakeTreshhold (kNumTxDesc / 3)
+#define kTxQueueWakeTreshhold (kNumTxDesc / 8)
 
 /* transmitter deadlock treshhold in seconds. */
 #define kTxDeadlockTreshhold 3
@@ -180,14 +206,70 @@ enum
 #define kEnableCSO6Name "enableCSO6"
 #define kEnableTSO4Name "enableTSO4"
 #define kEnableTSO6Name "enableTSO6"
-#define kIntrMitigateName "intrMitigate"
 #define kDisableASPMName "disableASPM"
-#define kDriverVersionName "Driver_Version"
+#define kDriverVersionName "DriverVersion"
 #define kFallbackName "fallbackMAC"
 #define kNameLenght 64
 
-#define kEnableRxPollName "rxPolling"
 #define kChipsetName "Chipset"
+
+/*
+ * Indicates if a tx IOMemoryDescriptor is in the prepared
+ * (active) or completed state (inactive).
+ */
+enum
+{
+    kIOMemoryInactive = 0,
+    kIOMemoryActive = 1
+};
+
+typedef struct rtlTxMapInfo {
+    UInt16 txNextMem2Use;
+    UInt16 txNextMem2Free;
+    SInt16 txNumFreeMem;
+    IOMemoryDescriptor *txMemIO[kNumTxMemDesc];
+    IOAddressRange txMemRange[kNumTxRanges];
+    IOAddressRange txSCRange[kMaxSegs];
+} rtlTxMapInfo;
+
+typedef struct rtlRxMapInfo {
+    IOMemoryDescriptor *rxMemIO[kNumRxMemDesc];
+    IOAddressRange rxMemRange[kNumRxDesc];
+} rtlRxMapInfo;
+
+typedef struct rtlRxBufferInfo {
+    mbuf_t mbuf;
+    IOPhysicalAddress64 phyAddr;
+} rtlRxBufferInfo;
+
+/**
+ *  Known kernel versions
+ */
+enum KernelVersion {
+    Tiger         = 8,
+    Leopard       = 9,
+    SnowLeopard   = 10,
+    Lion          = 11,
+    MountainLion  = 12,
+    Mavericks     = 13,
+    Yosemite      = 14,
+    ElCapitan     = 15,
+    Sierra        = 16,
+    HighSierra    = 17,
+    Mojave        = 18,
+    Catalina      = 19,
+    BigSur        = 20,
+    Monterey      = 21,
+    Ventura       = 22,
+    Sonoma        = 23,
+    Sequoia       = 24,
+    Tahoe         = 25,
+};
+
+/**
+ *  Kernel version major
+ */
+extern const int version_major;
 
 extern const struct RTLChipInfo rtl_chip_info[];
 
@@ -250,13 +332,20 @@ private:
     void getParams();
     bool setupMediumDict();
     bool initEventSources(IOService *provider);
-    void interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
     void pciErrorInterrupt();
     void txInterrupt();
     
-    void interruptOccurredPoll(OSObject *client, IOInterruptEventSource *src, int count);
-    UInt32 rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
+    UInt32 txMapPacket(mbuf_t packet, IOPhysicalSegment *vector, UInt32 maxSegs);
+    void txUnmapPacket();
 
+    void interruptOccurredPoll(OSObject *client, IOInterruptEventSource *src, int count);
+    void interruptOccurredVTD(OSObject *client, IOInterruptEventSource *src, int count);
+
+    UInt32 rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
+    UInt32 rxInterruptVTD(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
+
+    UInt16 rxMapBuffers(UInt16 index, UInt16 count);
+    
     bool setupRxResources();
     bool setupTxResources();
     bool setupStatResources();
@@ -269,6 +358,11 @@ private:
     void setLinkUp();
     void setLinkDown();
     bool checkForDeadlock();
+
+    bool setupRxMap();
+    void freeRxMap();
+    bool setupTxMap();
+    void freeTxMap();
 
     /* Jumbo frame support methods */
     void discardPacketFragment();
@@ -296,7 +390,7 @@ private:
     inline void getChecksumCommand(UInt32 *cmd1, UInt32 *cmd2, mbuf_csum_request_flags_t checksums);
     inline void getTso4Command(UInt32 *cmd1, UInt32 *cmd2, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
     inline void getTso6Command(UInt32 *cmd1, UInt32 *cmd2, UInt32 mssValue, mbuf_tso_request_flags_t tsoFlags);
-    inline void getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2);
+    void getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2);
     
     /* RTL8111C specific methods */
     void timerActionRTL8111C(IOTimerEventSource *timer);
@@ -324,10 +418,12 @@ private:
     IOBufferMemoryDescriptor *txBufDesc;
     IOPhysicalAddress64 txPhyAddr;
     IODMACommand *txDescDmaCmd;
-    struct RtlDmaDesc *txDescArray;
+    RtlDmaDesc *txDescArray;
     IOMbufNaturalMemoryCursor *txMbufCursor;
     mbuf_t *txMbufArray;
     void *txBufArrayMem;
+    rtlTxMapInfo *txMapInfo;
+    void *txMapMem;
     UInt64 txDescDoneCount;
     UInt64 txDescDoneLast;
     UInt32 txNextDescIndex;
@@ -338,17 +434,20 @@ private:
     IOBufferMemoryDescriptor *rxBufDesc;
     IOPhysicalAddress64 rxPhyAddr;
     IODMACommand *rxDescDmaCmd;
-    struct RtlDmaDesc *rxDescArray;
-    IOMbufNaturalMemoryCursor *rxMbufCursor;
-    mbuf_t *rxMbufArray;
+    RtlDmaDesc *rxDescArray;
+    RealtekRxPool *rxPool;
+    rtlRxBufferInfo *rxBufArray;
     void *rxBufArrayMem;
+    void *rxMapMem;
+    rtlRxMapInfo *rxMapInfo;
     mbuf_t rxPacketHead;
     mbuf_t rxPacketTail;
     UInt32 rxPacketSize;
     UInt64 multicastFilter;
-    UInt32 rxNextDescIndex;
     UInt32 rxConfigReg;
     UInt32 rxConfigMask;
+    UInt16 rxNextDescIndex;
+    UInt16 rxMapNextIndex;
 
     /* power management data */
     unsigned long powerState;
@@ -384,7 +483,6 @@ private:
 
     IONetworkPacketPollingParameters pollParams;
 
-    bool rxPoll;
     bool polling;
 
     /* flags */
@@ -401,6 +499,7 @@ private:
     bool enableTSO6;
     bool enableCSO6;
     bool disableASPM;
-    
+    bool useAppleVTD;
+
     UInt8 pciPMCtrlOffset;
 };
