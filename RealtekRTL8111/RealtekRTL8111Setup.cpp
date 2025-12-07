@@ -552,13 +552,13 @@ void RTL8111::freeRxResources()
     }
     RELEASE(rxPool);
     
-    for (i = 0; i < kNumRxDesc; i++) {
-        if (rxBufArray[i].mbuf) {
-            mbuf_freem_list(rxBufArray[i].mbuf);
-            rxBufArray[i].mbuf = NULL;
-        }
-    }
     if (rxBufArrayMem) {
+        for (i = 0; i < kNumRxDesc; i++) {
+            if (rxBufArray[i].mbuf) {
+                mbuf_freem_list(rxBufArray[i].mbuf);
+                rxBufArray[i].mbuf = NULL;
+            }
+        }
         IOFree(rxBufArrayMem, kRxBufArraySize);
         rxBufArrayMem = NULL;
         rxBufArray = NULL;

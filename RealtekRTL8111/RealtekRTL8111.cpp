@@ -98,7 +98,16 @@ bool RTL8111::init(OSDictionary *properties)
         disableASPM = false;
         useAppleVTD = false;
         pciPMCtrlOffset = 0;
-        memset(fallBackMacAddr.bytes, 0, kIOEthernetAddressSize);
+        
+        /* Create a random Ethernet address. */
+        random_buf(fallBackMacAddr.bytes, kIOEthernetAddressSize);
+        fallBackMacAddr.bytes[0] &= 0xfe;   /* clear multicast bit */
+        fallBackMacAddr.bytes[0] |= 0x02;   /* set local assignment bit (IEEE802) */
+        
+        DebugLog("Random MAC: %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
+              fallBackMacAddr.bytes[0], fallBackMacAddr.bytes[1],
+              fallBackMacAddr.bytes[2], fallBackMacAddr.bytes[3],
+              fallBackMacAddr.bytes[4], fallBackMacAddr.bytes[5]);
     }
     
 done:

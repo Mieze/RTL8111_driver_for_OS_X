@@ -15,6 +15,7 @@ extern "C" {
 #endif // __cplusplus
     
 #include <libkern/libkern.h>
+#include <libkern/crypto/rand.h>
 #include <libkern/version.h>
 #include <libkern/OSAtomic.h>
 #include <machine/limits.h>

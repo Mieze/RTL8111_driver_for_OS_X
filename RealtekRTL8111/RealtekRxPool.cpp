@@ -252,7 +252,10 @@ mbuf_t RealtekRxPool::replaceOrCopyPacket(mbuf_t *mp,
          */
         if (len > maxCopySize) {
             m = *mp;
-            *mp = getPacket(len);
+            if ((*mp = getPacket(len)) == 0) {
+                *mp = m;
+                m = 0;
+            }
             *replaced = true;
         } else {
             /*
