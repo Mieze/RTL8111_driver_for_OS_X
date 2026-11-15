@@ -4543,7 +4543,7 @@ out_unlock:
         spin_unlock_irqrestore(&tp->lock, flags);
 }
 
-static void
+void
 rtl8168_set_hw_wol(struct net_device *dev, u32 wolopts)
 {
         struct rtl8168_private *tp = netdev_priv(dev);

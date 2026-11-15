@@ -1935,6 +1935,7 @@ u16 rtl8168_mac_ocp_read(struct rtl8168_private *tp, u16 reg_addr);
 void rtl8168_mac_ocp_write(struct rtl8168_private *tp, u16 reg_addr, u16 value);
 void rtl8168_hw_ephy_config(struct net_device *dev);
 void rtl8168_get_hw_wol(struct net_device *dev);
+void rtl8168_set_hw_wol(struct net_device *dev, u32 wolopts);
 
 u32 mdio_real_read(struct rtl8168_private *tp, u32 RegAddr);
 void mdio_write_phy_ocp(struct rtl8168_private *tp, u16 PageNum, u32 RegAddr, u32 value);
