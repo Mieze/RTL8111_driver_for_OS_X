@@ -808,10 +808,24 @@ IOReturn RTL8111::setWakeOnMagicPacket(bool active)
     DebugLog("setWakeOnMagicPacket() ===>\n");
 
     if (wolCapable) {
+        /* Reflect the user's choice in the driver's state and in the options
+         * set which is re-applied each time the chip powers down.
+         */
+        if (active)
+            linuxData.wol_opts |= WAKE_MAGIC;
+        else
+            linuxData.wol_opts &= ~WAKE_MAGIC;
+
         linuxData.wol_enabled = active ? WOL_ENABLED : WOL_DISABLED;
         wolActive = active;
-        
-        DebugLog("WakeOnMagicPacket %s.\n", active ? "enabled" : "disabled");
+
+        /* Push the magic packet bit to the hardware right away. The chip is
+         * unlocked for configuration register writes while it is running.
+         */
+        rtl8168_set_hw_wol(&linuxData, linuxData.wol_opts);
+
+        DebugLog("WakeOnMagicPacket %s (wol_opts=0x%x).\n",
+                 active ? "enabled" : "disabled", linuxData.wol_opts);
 
         result = kIOReturnSuccess;
     }

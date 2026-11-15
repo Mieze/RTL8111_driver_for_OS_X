@@ -137,7 +137,6 @@ bool RTL8111::initRTL8111()
     UInt16 macAddr[4];
     UInt8 options1, options2;
     bool result = false;
-    bool wol;
     
     /* Identify chip attached to board. */
     rtl8168_get_mac_version(tp, baseAddr);
@@ -573,43 +572,21 @@ bool RTL8111::initRTL8111()
     options2 = ReadReg8(Config5);
     csi_tmp = rtl8168_eri_read(baseAddr, 0xDE, 4, ERIAR_ExGMAC);
     
-    switch (tp->mcfg) {
-        case CFG_METHOD_16:
-        case CFG_METHOD_17:
-        case CFG_METHOD_18:
-        case CFG_METHOD_19:
-        case CFG_METHOD_20:
-        case CFG_METHOD_21:
-        case CFG_METHOD_22:
-        case CFG_METHOD_24:
-        case CFG_METHOD_25:
-        case CFG_METHOD_26:
-        case CFG_METHOD_27:
-        case CFG_METHOD_28:
-        case CFG_METHOD_29:
-        case CFG_METHOD_30:
-        case CFG_METHOD_31:
-        case CFG_METHOD_32:
-            wol = ((options1 & LinkUp) || (csi_tmp & BIT_0) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF)) ? true : false;
-            break;
-            
-        case CFG_METHOD_DEFAULT:
-            wol = false;
-            break;
-            
-        default:
-            wol = ((options1 & LinkUp) || (options1 & MagicPacket) || (options2 & UWF) || (options2 & BWF) || (options2 & MWF)) ? true : false;
-            break;
-    }
-    /* Set wake on LAN support. */
-    wolCapable = wolCapable && wol;
+    /* Wake on Magic Packet capability is static: the chip must support PME#
+     * from D3 (cold), which was checked in initPCIConfigSpace(), and the
+     * chipset must implement a magic packet matcher. The current state of
+     * the wake enable bits says what is enabled right now, not what is
+     * possible, therefore it must not feed into wolCapable. Otherwise a
+     * cold boot with cleared registers makes the driver refuse to advertise
+     * kIOEthernetWakeOnMagicPacket at all, and the user has no means left
+     * to switch WoL on because setWakeOnMagicPacket() is gated by the same
+     * flag.
+     */
+    wolCapable = wolCapable && (tp->HwSuppMagicPktVer != WAKEUP_MAGIC_PACKET_NOT_SUPPORT);
     
-#ifdef DEBUG
-    
-    if (wolCapable)
-        IOLog("Device is WoL capable.\n");
-    
-#endif
+    IOLog("WoL capable: %u (magic packet version: %u), current wake options: "
+          "Config3=0x%x, Config5=0x%x, ERIAR_0xDE=0x%x, wol_opts=0x%x.\n",
+          wolCapable, tp->HwSuppMagicPktVer, options1, options2, csi_tmp, tp->wol_opts);
     
     result = true;
     
