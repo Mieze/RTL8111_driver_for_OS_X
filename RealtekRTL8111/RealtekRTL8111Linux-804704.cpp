@@ -6696,6 +6696,9 @@ void rtl8168_get_mac_version(struct rtl8168_private *tp, void __iomem *ioaddr)
 
                 tp->efuse_ver = EFUSE_SUPPORT_V3;
                 break;
+        case 0x6C000000:
+                tp->mcfg = CFG_METHOD_29;
+                break;
         default:
                 printk("unknown chip version (%x)\n",reg);
                 tp->mcfg = CFG_METHOD_DEFAULT;
